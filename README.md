@@ -18,13 +18,20 @@ Interactive TUI wrapper for [iCloud Photos Downloader](https://github.com/icloud
 - [icloudpd](https://github.com/icloud-photos-downloader/icloud_photos_downloader) (iCloud Photos Downloader)
 - [fzf](https://github.com/junegunn/fzf) (fuzzy finder)
 - [gawk](https://www.gnu.org/software/gawk/) (GNU awk)
-- Linux with `mountpoint`, `stat`, `tput` (standard on most distros)
+- Linux or macOS
 
 ## Installation
 
 ```bash
-# Install dependencies (Arch/CachyOS)
+# Install dependencies
+# Arch/CachyOS:
 sudo pacman -S fzf gawk
+
+# Ubuntu/Debian:
+sudo apt install fzf gawk
+
+# macOS:
+brew install fzf gawk
 
 # Install icloudpd
 pipx install icloudpd
@@ -87,7 +94,7 @@ Settings are loaded in this priority order:
 
 - icloudpd cannot efficiently list the full iCloud library contents. The browse view is built from local files (your backup) plus a quick recent-files check.
 - Date-filtered downloads still trigger a full library enumeration by icloudpd. This is an upstream limitation.
-- Linux only (uses `/proc` for CPU monitoring, `mountpoint` for drive detection).
+- On macOS, CPU-based stall detection is not available (falls back to log file monitoring only).
 
 ## License
 

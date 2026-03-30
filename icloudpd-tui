@@ -11,6 +11,7 @@
 # Requires:     icloudpd (https://github.com/icloud-photos-downloader/icloud_photos_downloader)
 #               fzf (https://github.com/junegunn/fzf)
 #               gawk (GNU awk, for asorti/asort)
+# Platforms:    Linux, macOS
 #
 # icloudpd is MIT licensed, Copyright (c) 2016 Nathan Broadbent.
 # fzf is MIT licensed, Copyright (c) 2013-2024 Junegunn Choi.
@@ -120,14 +121,52 @@ show_version() {
     exit 0
 }
 
+# ── Platform detection ─────────────────────────────────────────────────────────
+
+IS_MACOS=false
+[[ "$(uname -s)" == "Darwin" ]] && IS_MACOS=true
+
+# Portable wrappers for commands that differ between Linux and macOS
+file_mtime() {
+    # Get file modification time as epoch seconds
+    if $IS_MACOS; then
+        stat -f %m "$1" 2>/dev/null
+    else
+        stat -c %Y "$1" 2>/dev/null
+    fi
+}
+
+is_mountpoint() {
+    # Check if a path is a mount point
+    if $IS_MACOS; then
+        # On macOS, check if path is listed in mount output
+        mount | grep -q " on ${1} " 2>/dev/null
+    else
+        mountpoint -q "$1" 2>/dev/null
+    fi
+}
+
+last_day_of_month() {
+    # Get the last day of a given YYYY MM (handles leap years)
+    if $IS_MACOS; then
+        # macOS date: go to 1st of next month, subtract 1 day
+        local next_mo next_yr
+        next_mo=$(( 10#$2 + 1 ))
+        next_yr=$1
+        if (( next_mo > 12 )); then next_mo=1; next_yr=$(( next_yr + 1 )); fi
+        date -j -f "%Y-%m-%d" "$(printf '%04d-%02d-01' "$next_yr" "$next_mo")" -v-1d "+%d" 2>/dev/null
+    else
+        date -d "$1-$2-01 +1 month -1 day" +%d
+    fi
+}
+
 # ── Dependency checks ─────────────────────────────────────────────────────────
 
 check_deps() {
     local missing=()
     command -v "$ICLOUDPD" &>/dev/null || missing+=("icloudpd")
     command -v fzf &>/dev/null         || missing+=("fzf")
-    command -v gawk &>/dev/null        || missing+=("gawk")
-    command -v mountpoint &>/dev/null  || missing+=("util-linux (mountpoint)")
+    command -v gawk &>/dev/null        || missing+=("gawk (brew install gawk)")
     command -v tput &>/dev/null        || missing+=("ncurses (tput)")
 
     if (( ${#missing[@]} > 0 )); then
@@ -250,7 +289,7 @@ run_setup() {
     read -rp "  Mount point${default_mount:+ [$default_mount]}: " input
     MOUNT_POINT="${input:-$default_mount}"
 
-    if [[ -n "$MOUNT_POINT" ]] && ! mountpoint -q "$MOUNT_POINT" 2>/dev/null; then
+    if [[ -n "$MOUNT_POINT" ]] && ! is_mountpoint "$MOUNT_POINT" 2>/dev/null; then
         dim "  Note: $MOUNT_POINT is not mounted right now. That's fine if"; echo
         dim "  the drive is unplugged — we'll check before each download."; echo
     fi
@@ -314,7 +353,7 @@ check_mount() {
     # Skip check if no mount point configured (local folder setup)
     [[ -z "$MOUNT_POINT" ]] && return 0
 
-    if ! mountpoint -q "$MOUNT_POINT" 2>/dev/null; then
+    if ! is_mountpoint "$MOUNT_POINT" 2>/dev/null; then
         err "Backup drive not found."
         err "Please plug in the drive and make sure it appears at:"
         err "  $MOUNT_POINT"
@@ -361,10 +400,12 @@ estimate_size_mb() {
 # Compute real average file sizes from already-downloaded files
 calibrate_averages() {
     if [[ ! -d "$TARGET_DIR" ]]; then return; fi
+    # Portable: find + ls -l works on both Linux and macOS
     local result
-    result=$(find "$TARGET_DIR" -type f -printf '%s %f\n' 2>/dev/null | gawk -v pext="$PHOTO_EXT" -v vext="$VIDEO_EXT" '
+    result=$(find "$TARGET_DIR" -type f -exec ls -ln {} + 2>/dev/null | gawk -v pext="$PHOTO_EXT" -v vext="$VIDEO_EXT" '
     {
-        sz = $1; fn = $2
+        sz = $5
+        fn = $NF; sub(/.*\//, "", fn)
         n = split(fn, parts, ".")
         ext = tolower(parts[n])
         if (ext ~ "^(" pext ")$") { psz += sz; pc++ }
@@ -403,8 +444,15 @@ pick_directory() {
         fi
     done
 
-    # Manual mount points
+    # Manual mount points (Linux)
     for d in /mnt/*/; do [[ -d "$d" ]] && dirs+=("${d%/}"); done
+
+    # macOS volumes
+    if $IS_MACOS; then
+        for d in /Volumes/*/; do
+            [[ -d "$d" && "$d" != "/Volumes/Macintosh HD/" ]] && dirs+=("${d%/}")
+        done
+    fi
 
     # Common home directories for photos
     for d in "$HOME/Pictures" "$HOME/Photos" "$HOME/icloud-photos"; do
@@ -509,9 +557,7 @@ estimate_missing_bytes() {
     echo $(( missing_count * avg_bytes ))
 }
 
-last_day_of_month() {
-    date -d "$1-$2-01 +1 month -1 day" +%d
-}
+
 
 # ── Scan / Cache ──────────────────────────────────────────────────────────────
 
@@ -540,7 +586,7 @@ cache_is_fresh() {
     [[ -f "$CACHE_FILE" ]] || return 1
     local now mtime age
     now=$(date +%s)
-    mtime=$(stat -c %Y "$CACHE_FILE")
+    mtime=$(file_mtime "$CACHE_FILE")
     age=$(( now - mtime ))
     (( age < CACHE_MAX_AGE ))
 }
@@ -574,7 +620,7 @@ spin_while() {
             prev_count=$count
         elif [[ -n "$log_file" && -s "$log_file" ]]; then
             local log_mtime
-            log_mtime=$(stat -c %Y "$log_file" 2>/dev/null) || log_mtime=0
+            log_mtime=$(file_mtime "$log_file" 2>/dev/null) || log_mtime=0
             if (( log_mtime > stall_start )); then
                 stall_start=$now_ts
             fi
@@ -683,7 +729,7 @@ load_or_scan() {
     ensure_cache
     if cache_is_fresh; then
         local age_hr
-        age_hr=$(( ($(date +%s) - $(stat -c %Y "$CACHE_FILE")) / 3600 ))
+        age_hr=$(( ($(date +%s) - $(file_mtime "$CACHE_FILE")) / 3600 ))
         info "Using cached scan (${age_hr}h old). Select 'Rescan' to refresh."
     else
         if ! scan_library; then
