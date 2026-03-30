@@ -16,6 +16,7 @@
 # fzf is MIT licensed, Copyright (c) 2013-2024 Junegunn Choi.
 # ─────────────────────────────────────────────────────────────────────────────
 set -euo pipefail
+umask 077  # ensure all created files/dirs are owner-only
 
 VERSION="0.1.0"
 
@@ -151,7 +152,7 @@ load_config() {
 }
 
 save_config() {
-    mkdir -p "$CONFIG_DIR"
+    mkdir -p "$CONFIG_DIR" && chmod 700 "$CONFIG_DIR"
     cat > "$CONFIG_FILE" <<EOF
 # icloudpd-tui configuration
 # Generated on $(date -I)
@@ -281,7 +282,7 @@ run_setup() {
     info "Testing iCloud login..."
     dim "  You may be asked for your password and a verification code."; echo
     echo
-    if $ICLOUDPD --auth-only --username "$USERNAME"; then
+    if "$ICLOUDPD" --auth-only --username "$USERNAME"; then
         echo
         info "Setup complete! Run $(bold "icloudpd-tui") to start."
     else
@@ -471,7 +472,7 @@ last_day_of_month() {
 
 # ── Scan / Cache ──────────────────────────────────────────────────────────────
 
-ensure_cache() { mkdir -p "$CACHE_DIR"; }
+ensure_cache() { mkdir -p "$CACHE_DIR" && chmod 700 "$CACHE_DIR"; }
 
 # Save the iCloud library total when we see it in icloudpd output.
 # icloudpd prints "Downloading N original photos and videos" on every run.
@@ -612,7 +613,7 @@ scan_library() {
     > "$log_file"
 
     local recent=$SCAN_RECENT
-    $ICLOUDPD \
+    "$ICLOUDPD" \
         --only-print-filenames \
         --log-level info \
         --username "$USERNAME" \
@@ -1078,7 +1079,7 @@ download_selection() {
         # before downloading, so we show a spinner during that wait.
         local dl_log="$CACHE_DIR/download.log"
         > "$dl_log"
-        $ICLOUDPD \
+        "$ICLOUDPD" \
             --log-level info \
             --username "$USERNAME" \
             --directory "$TARGET_DIR" \
@@ -1243,7 +1244,7 @@ action_sync() {
     local sync_log="$CACHE_DIR/sync.log"
     > "$sync_log"
 
-    $ICLOUDPD \
+    "$ICLOUDPD" \
         --username "$USERNAME" \
         --directory "$TARGET_DIR" \
         --folder-structure "$FOLDER_STRUCTURE" \
@@ -1478,7 +1479,7 @@ main() {
     dim "  If prompted, enter your Apple ID password and the verification code"; echo
     dim "  sent to your trusted Apple devices."; echo
     echo
-    if ! $ICLOUDPD --auth-only --username "$USERNAME"; then
+    if ! "$ICLOUDPD" --auth-only --username "$USERNAME"; then
         err "  Authentication failed. Check your credentials and try again."
         exit 1
     fi
