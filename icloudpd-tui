@@ -711,7 +711,7 @@ main_menu() {
             est_bytes=$(estimate_missing_bytes "$missing")
             local est_human
             est_human=$(humanize "$est_bytes")
-            status_lines+="  $(dim "         ")  \033[33m⚠ ~${missing} files not backed up (~${est_human} needed)\033[0m"$'\n'
+            status_lines+=$'  \033[33m'"           ~${missing} files not backed up (~${est_human} needed)"$'\033[0m\n'
         elif (( missing > 0 )); then
             status_lines+="  $(dim "           ~${missing} files remaining")"$'\n'
         fi
@@ -742,13 +742,11 @@ main_menu() {
 
     local choice
     choice=$(printf '%s\n' \
-        "  Sync New Files       Download recent files not yet backed up" \
-        "  Browse Library       View your backup by year and month" \
-        "  Download by Date     Re-sync a specific time period from iCloud" \
-        "  Rescan               Check last $SCAN_RECENT iCloud files for anything new" \
-        "  Full Sync            Download ALL missing files from iCloud (slow)" \
-        "  Disk Status          Check backup drive space" \
-        "  Settings             Change download location or account" \
+        "  Sync                 Download new and missing files from iCloud" \
+        "  Browse Library       View your backup organized by year and month" \
+        "  Download by Date     Pick specific months to re-sync from iCloud" \
+        "  Disk Status          Check backup drive space and storage estimates" \
+        "  Settings             Change Apple ID, download location, or drive" \
         "  Quit                 Exit the program" \
     | fzf --ansi --no-multi --no-sort --reverse \
         --color="$FZF_COLORS" \
@@ -758,11 +756,9 @@ main_menu() {
     || echo "Quit")
 
     case "$choice" in
-        *"Sync New Files"*)    action_quick_sync ;;
+        *"Sync"*)              action_sync ;;
         *"Browse Library"*)    action_browse_library ;;
         *"Download by Date"*)  action_download_by_date ;;
-        *"Full Sync"*)         action_full_sync ;;
-        *"Rescan"*)            action_rescan ;;
         *"Disk Status"*)       action_disk_status ;;
         *"Settings"*)          run_setup; main_menu; return ;;
         *)                      info "Bye."; exit 0 ;;
@@ -785,7 +781,7 @@ action_browse_library() {
         "$(bold "$total_local")" \
         "$(humanize "$DISK_AVAIL")" "$(humanize "$DISK_TOTAL")" \
         "$(dim "Scroll with arrow keys ↑↓  |  Esc = go back")" \
-        "$(dim "To download, use 'Download by Date' or 'Sync New Files' from the menu")")
+        "$(dim "To download, use 'Sync' or 'Download by Date' from the menu")")
 
     # View-only: no --multi, just browsing
     format_tree "$tree_file" | fzf --ansi --no-multi --no-sort --reverse \
@@ -1095,49 +1091,209 @@ run_with_retry() {
     done
 }
 
-action_quick_sync() {
-    local until_found="${1:-50}"
-
-    # If we know there's a large gap, suggest a higher --until-found
+action_sync() {
+    local local_count
+    local_count=$(find "$TARGET_DIR" -type f 2>/dev/null | wc -l)
     local library_total
     library_total=$(get_library_total)
-    if [[ -n "$library_total" && "$library_total" -gt 0 ]]; then
-        local local_count
-        local_count=$(find "$TARGET_DIR" -type f 2>/dev/null | wc -l)
-        local missing=$(( library_total - local_count ))
-        if (( missing > 1000 && until_found < 100 )); then
-            echo
-            printf "  \033[33m⚠ Your backup is missing ~%d files from iCloud.\033[0m\n" "$missing"
-            dim "  The default sync stops after 50 consecutive duplicates, which may"; echo
-            dim "  not be enough to find all gaps. A higher value scans more thoroughly"; echo
-            dim "  but takes longer."; echo
-            echo
-            read -rp "  Use higher scan depth? [Y=use $missing / n=keep $until_found] " input
-            case "$input" in
-                [nN]*) ;;
-                *) until_found=$missing ;;
-            esac
-            echo
-        fi
-    fi
 
-    info "Starting quick sync (scan depth: $until_found)..."
+    echo
+    accent "  Sync iCloud Photos"; echo
+    echo "  ────────────────────────────────────"
     dim "  Saving to: $TARGET_DIR"; echo
-    dim "  This downloads all new files until $until_found consecutive duplicates are found."; echo
-    dim "  Note: files you deleted locally will be re-downloaded if they still exist in iCloud."; echo
-    dim "  Press Ctrl+C to stop safely (already-saved files are kept)."; echo
     echo
 
-    # Tee output to a log so we can capture the library total
+    local missing=0
+    if [[ -n "$library_total" && "$library_total" -gt 0 ]]; then
+        missing=$(( library_total - local_count ))
+        local local_bytes
+        local_bytes=$(du -sb "$TARGET_DIR" 2>/dev/null | awk '{print $1}') || local_bytes=0
+        printf "  Backed up:    %s of ~%s files (%s)\n" "$(bold "$local_count")" "$(bold "$library_total")" "$(humanize "$local_bytes")"
+
+        if (( missing > 0 )); then
+            local est_bytes
+            est_bytes=$(estimate_missing_bytes "$missing")
+            printf "  Missing:      ~%s files (~%s)\n" "$(bold "$missing")" "$(humanize "$est_bytes")"
+
+            disk_info
+            printf "  Disk free:    %s\n" "$(bold "$(humanize "$DISK_AVAIL")")"
+
+            if (( est_bytes > DISK_AVAIL )); then
+                local shortfall=$(( est_bytes - DISK_AVAIL ))
+                echo
+                printf '  \033[33m⚠ Not enough space for all missing files.\033[0m\n'
+                printf '  \033[33m  Need ~%s more. Will download as much as possible.\033[0m\n' "$(humanize "$shortfall")"
+            fi
+        else
+            printf "  Status:       %s\n" "$(accent "fully synced")"
+        fi
+    else
+        printf "  Backed up:    %s files\n" "$(bold "$local_count")"
+        dim "  iCloud library size unknown — will be detected during sync."; echo
+    fi
+
+    echo
+    echo "  ────────────────────────────────────"
+
+    # Choose sync mode
+    local mode
+    if (( missing > 1000 )); then
+        echo
+        dim "  Choose sync mode:"; echo
+        echo
+        printf "  $(bold "1)") Quick — check recent files only (fast, ~1 min)\n"
+        printf "  $(bold "2)") Full  — check entire library (slow, may take hours)\n"
+        echo
+        read -rp "  Mode [1]: " mode_input
+        case "$mode_input" in
+            2) mode="full" ;;
+            *) mode="quick" ;;
+        esac
+    else
+        mode="quick"
+    fi
+
+    local scan_depth
+    if [[ "$mode" == "full" ]]; then
+        scan_depth="${library_total:-$local_count}"
+        (( scan_depth < 1000 )) && scan_depth=1000
+        dim "  Full sync — scanning entire library (depth: $scan_depth)"; echo
+    else
+        scan_depth=50
+        dim "  Quick sync — checking recent files (depth: $scan_depth)"; echo
+    fi
+
+    echo
+    dim "  Press Ctrl+C to stop safely (progress is kept)."; echo
+    echo
+
+    # Run icloudpd in background with live status display
     local sync_log="$CACHE_DIR/sync.log"
-    run_with_retry $ICLOUDPD \
+    > "$sync_log"
+
+    $ICLOUDPD \
         --username "$USERNAME" \
         --directory "$TARGET_DIR" \
         --folder-structure "$FOLDER_STRUCTURE" \
         --size "$DL_SIZE" \
-        --until-found "$until_found" 2>&1 | tee "$sync_log"
+        --until-found "$scan_depth" >> "$sync_log" 2>&1 &
+    local sync_pid=$!
+
+    local tty=/dev/tty
+    local checked=0 downloaded=0 skipped=0
+    local frames='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
+    local fi=0 last_line_count=0
+    local start_ts
+    start_ts=$(date +%s)
+    local -a recent_files=("" "" "" "" "")
+    local display_rows=7
+
+    tput civis > "$tty" 2>/dev/null || true
+    for ((r=0; r<display_rows; r++)); do printf '\n' > "$tty"; done
+
+    while kill -0 "$sync_pid" 2>/dev/null; do
+        local total_lines
+        total_lines=$(wc -l < "$sync_log" 2>/dev/null) || total_lines=0
+
+        if (( total_lines > last_line_count )); then
+            local batch_result
+            batch_result=$(sed -n "$(( last_line_count + 1 )),${total_lines}p" "$sync_log" \
+                | gawk -v tdir="$TARGET_DIR" '
+                /Downloaded/ {
+                    sub(".*" tdir "/", ""); gsub(/[[:space:]].*/, "")
+                    dl++; print "new|" $0
+                }
+                /already exists|deduplicated/ {
+                    sub(".*" tdir "/", ""); gsub(/[[:space:]].*/, "")
+                    sk++; print "ok|" $0
+                }
+                END { print "COUNTS|" dl+0 "|" sk+0 }
+            ')
+            last_line_count=$total_lines
+
+            local counts_line
+            counts_line=$(echo "$batch_result" | tail -1)
+            local dl_new skip_new
+            dl_new=$(echo "$counts_line" | cut -d'|' -f2)
+            skip_new=$(echo "$counts_line" | cut -d'|' -f3)
+            downloaded=$(( downloaded + dl_new ))
+            skipped=$(( skipped + skip_new ))
+            checked=$(( downloaded + skipped ))
+
+            local -a batch_files
+            mapfile -t batch_files < <(echo "$batch_result" | grep -v "^COUNTS|" | tail -5)
+            for entry in "${batch_files[@]}"; do
+                [[ -n "$entry" ]] && recent_files=("${recent_files[@]:1}" "$entry")
+            done
+        fi
+
+        local now_ts elapsed_s elapsed_fmt
+        now_ts=$(date +%s)
+        elapsed_s=$(( now_ts - start_ts ))
+        if (( elapsed_s >= 60 )); then
+            elapsed_fmt="$(( elapsed_s / 60 ))m$(( elapsed_s % 60 ))s"
+        else
+            elapsed_fmt="${elapsed_s}s"
+        fi
+
+        printf '\033[%dA' "$display_rows" > "$tty"
+
+        for ((r=0; r<5; r++)); do
+            local entry="${recent_files[$r]}"
+            if [[ -n "$entry" ]]; then
+                local st="${entry%%|*}"
+                local fn="${entry#*|}"
+                fn="${fn:0:65}"
+                if [[ "$st" == "new" ]]; then
+                    printf '\033[K    \033[32m+ %s\033[0m\n' "$fn" > "$tty"
+                else
+                    printf '\033[K    \033[2m✓ %s\033[0m\n' "$fn" > "$tty"
+                fi
+            else
+                printf '\033[K\n' > "$tty"
+            fi
+        done
+
+        printf '\033[K  \033[38;2;95;138;114m%s\033[0m  checked \033[1m%d\033[0m  new \033[1;32m%d\033[0m  skipped \033[2m%d\033[0m  \033[2m[%s]\033[0m\n' \
+            "${frames:fi%${#frames}:1}" "$checked" "$downloaded" "$skipped" "$elapsed_fmt" > "$tty"
+        printf '\033[K\n' > "$tty"
+
+        fi=$(( fi + 1 ))
+        sleep 0.1
+    done
+
+    # Final count
+    local total_lines
+    total_lines=$(wc -l < "$sync_log" 2>/dev/null) || total_lines=0
+    if (( total_lines > last_line_count )); then
+        local new_lines
+        new_lines=$(sed -n "$(( last_line_count + 1 )),${total_lines}p" "$sync_log")
+        local dl_new skip_new
+        dl_new=$(echo "$new_lines" | grep -c "Downloaded" 2>/dev/null) || dl_new=0
+        skip_new=$(echo "$new_lines" | grep -c "already exists\|deduplicated" 2>/dev/null) || skip_new=0
+        downloaded=$(( downloaded + dl_new ))
+        skipped=$(( skipped + skip_new ))
+        checked=$(( downloaded + skipped ))
+    fi
+
+    wait "$sync_pid" 2>/dev/null || true
+
+    printf '\033[%dA' "$display_rows" > "$tty"
+    for ((r=0; r<display_rows; r++)); do printf '\033[K\n' > "$tty"; done
+    printf '\033[%dA' "$display_rows" > "$tty"
+
+    tput cnorm > "$tty" 2>/dev/null || true
     capture_library_total "$sync_log"
-    info "Quick sync complete!"
+
+    echo
+    accent "  Sync complete"; echo
+    echo "  ────────────────────────────────────"
+    printf "  Checked:      %s files\n" "$(bold "$checked")"
+    printf "  Downloaded:   %s new files\n" "$(bold "$downloaded")"
+    printf "  Skipped:      %s already backed up\n" "$(dim "$skipped")"
+    echo "  ────────────────────────────────────"
+    echo
+    read -rp "  $(dim "Press Enter to go back to menu...") " _
     main_menu
 }
 
@@ -1224,216 +1380,6 @@ action_disk_status() {
     main_menu
 }
 
-action_rescan() {
-    rm -f "$CACHE_FILE"
-    dim "  Checking the $SCAN_RECENT most recent files in your iCloud library."; echo
-    echo
-    scan_library || true
-    echo
-    read -rp "  $(dim "Press Enter to go back to menu...") " _
-    main_menu
-}
-
-action_full_sync() {
-    local local_count
-    local_count=$(find "$TARGET_DIR" -type f 2>/dev/null | wc -l)
-    local library_total
-    library_total=$(get_library_total)
-
-    echo
-    accent "  Full Library Sync"; echo
-    echo "  ────────────────────────────────────"
-    dim "  This downloads ALL missing files from your iCloud library."; echo
-    dim "  It works by scanning from newest to oldest until every file"; echo
-    dim "  has been checked. For large libraries this can take hours."; echo
-
-    if [[ -n "$library_total" && "$library_total" -gt 0 ]]; then
-        local missing=$(( library_total - local_count ))
-        echo
-        local local_bytes
-        local_bytes=$(du -sb "$TARGET_DIR" 2>/dev/null | awk '{print $1}') || local_bytes=0
-        printf "  Backed up:    %s of ~%s files (%s)\n" "$(bold "$local_count")" "$(bold "$library_total")" "$(humanize "$local_bytes")"
-        if (( missing > 0 )); then
-            local est_bytes
-            est_bytes=$(estimate_missing_bytes "$missing")
-            printf "  Missing:      ~%s files\n" "$(bold "$missing")"
-            printf "  Est. needed:  ~%s to complete full backup\n" "$(bold "$(humanize "$est_bytes")")"
-
-            disk_info
-            printf "  Disk free:    %s\n" "$(bold "$(humanize "$DISK_AVAIL")")"
-
-            if (( est_bytes > DISK_AVAIL )); then
-                local shortfall=$(( est_bytes - DISK_AVAIL ))
-                echo
-                printf "  \033[31m⚠ Not enough disk space for a full sync.\033[0m\n"
-                printf "  \033[31m  You need ~%s more free space.\033[0m\n" "$(humanize "$shortfall")"
-                dim "  You can still run it — it will download as much as it can."; echo
-                dim "  Or use 'Download by Date' to sync specific months."; echo
-            fi
-        else
-            printf "  Missing:      %s\n" "$(accent "none — already fully synced")"
-        fi
-    fi
-
-    echo
-    dim "  Avoid running this repeatedly — Apple may rate-limit your"; echo
-    dim "  account if you make too many requests in a short time."; echo
-    dim "  Press Ctrl+C to stop safely (progress is kept)."; echo
-    echo
-    read -rp "  Start full sync? [y/N] " confirm
-    case "$confirm" in
-        [yY]*) ;;
-        *) info "Cancelled."; main_menu; return ;;
-    esac
-
-    echo
-    local scan_depth="${library_total:-$local_count}"
-    (( scan_depth < 1000 )) && scan_depth=1000
-
-    # Run icloudpd in background and parse its output for a live status line
-    local sync_log="$CACHE_DIR/sync.log"
-    > "$sync_log"
-
-    $ICLOUDPD \
-        --username "$USERNAME" \
-        --directory "$TARGET_DIR" \
-        --folder-structure "$FOLDER_STRUCTURE" \
-        --size "$DL_SIZE" \
-        --until-found "$scan_depth" >> "$sync_log" 2>&1 &
-    local sync_pid=$!
-
-    local tty=/dev/tty
-    local checked=0 downloaded=0 skipped=0
-    local frames='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
-    local fi=0 last_line_count=0
-    local start_ts
-    start_ts=$(date +%s)
-    local -a recent_files=("" "" "" "" "")  # last 5 files
-    local display_rows=7  # 5 file rows + 1 status + 1 blank
-    local first_draw=true
-
-    tput civis > "$tty" 2>/dev/null || true
-
-    # Print initial blank rows so cursor-up works from the start
-    for ((r=0; r<display_rows; r++)); do printf '\n' > "$tty"; done
-
-    while kill -0 "$sync_pid" 2>/dev/null; do
-        local total_lines
-        total_lines=$(wc -l < "$sync_log" 2>/dev/null) || total_lines=0
-
-        if (( total_lines > last_line_count )); then
-            # Process new log lines in one fast awk pass instead of per-line bash loop
-            local batch_result
-            batch_result=$(sed -n "$(( last_line_count + 1 )),${total_lines}p" "$sync_log" \
-                | gawk -v tdir="$TARGET_DIR" '
-                /Downloaded/ {
-                    sub(".*" tdir "/", ""); gsub(/[[:space:]].*/, "")
-                    dl++; print "new|" $0
-                }
-                /already exists|deduplicated/ {
-                    sub(".*" tdir "/", ""); gsub(/[[:space:]].*/, "")
-                    sk++; print "ok|" $0
-                }
-                END { print "COUNTS|" dl+0 "|" sk+0 }
-            ')
-            last_line_count=$total_lines
-
-            # Extract counts from last line
-            local counts_line
-            counts_line=$(echo "$batch_result" | tail -1)
-            local dl_new skip_new
-            dl_new=$(echo "$counts_line" | cut -d'|' -f2)
-            skip_new=$(echo "$counts_line" | cut -d'|' -f3)
-            downloaded=$(( downloaded + dl_new ))
-            skipped=$(( skipped + skip_new ))
-            checked=$(( downloaded + skipped ))
-
-            # Get last 5 file entries (excluding the COUNTS line)
-            local -a batch_files
-            mapfile -t batch_files < <(echo "$batch_result" | grep -v "^COUNTS|" | tail -5)
-            for entry in "${batch_files[@]}"; do
-                [[ -n "$entry" ]] && recent_files=("${recent_files[@]:1}" "$entry")
-            done
-        fi
-
-        local now_ts elapsed_s elapsed_fmt
-        now_ts=$(date +%s)
-        elapsed_s=$(( now_ts - start_ts ))
-        if (( elapsed_s >= 60 )); then
-            elapsed_fmt="$(( elapsed_s / 60 ))m$(( elapsed_s % 60 ))s"
-        else
-            elapsed_fmt="${elapsed_s}s"
-        fi
-
-        # Move cursor up to redraw the block
-        printf '\033[%dA' "$display_rows" > "$tty"
-
-        # Draw 5 recent file rows
-        for ((r=0; r<5; r++)); do
-            local entry="${recent_files[$r]}"
-            if [[ -n "$entry" ]]; then
-                local st="${entry%%|*}"
-                local fn="${entry#*|}"
-                fn="${fn:0:65}"
-                if [[ "$st" == "new" ]]; then
-                    printf '\033[K    \033[32m+\033[0m %s\n' "$fn" > "$tty"
-                else
-                    printf '\033[K    \033[2m✓ %s\033[0m\n' "$fn" > "$tty"
-                fi
-            else
-                printf '\033[K\n' > "$tty"
-            fi
-        done
-
-        # Status line
-        printf '\033[K  \033[38;2;95;138;114m%s\033[0m  checked \033[1m%d\033[0m  new \033[1;32m%d\033[0m  skipped \033[2m%d\033[0m  \033[2m[%s]\033[0m\n' \
-            "${frames:fi%${#frames}:1}" "$checked" "$downloaded" "$skipped" "$elapsed_fmt" > "$tty"
-
-        # Blank padding row
-        printf '\033[K\n' > "$tty"
-
-        fi=$(( fi + 1 ))
-        sleep 0.1
-    done
-
-    # Final count from remaining log lines
-    local total_lines
-    total_lines=$(wc -l < "$sync_log" 2>/dev/null) || total_lines=0
-    if (( total_lines > last_line_count )); then
-        local new_lines
-        new_lines=$(sed -n "$(( last_line_count + 1 )),${total_lines}p" "$sync_log")
-        local dl_new skip_new
-        dl_new=$(echo "$new_lines" | grep -c "Downloaded" 2>/dev/null) || dl_new=0
-        skip_new=$(echo "$new_lines" | grep -c "already exists\|deduplicated" 2>/dev/null) || skip_new=0
-        downloaded=$(( downloaded + dl_new ))
-        skipped=$(( skipped + skip_new ))
-        checked=$(( downloaded + skipped ))
-    fi
-
-    wait "$sync_pid" 2>/dev/null || true
-
-    # Clear the display block
-    printf '\033[%dA' "$display_rows" > "$tty"
-    for ((r=0; r<display_rows; r++)); do printf '\033[K\n' > "$tty"; done
-    printf '\033[%dA' "$display_rows" > "$tty"
-
-    tput cnorm > "$tty" 2>/dev/null || true
-
-    capture_library_total "$sync_log"
-
-    echo
-    accent "  Sync complete"; echo
-    echo "  ────────────────────────────────────"
-    printf "  Checked:      %s files\n" "$(bold "$checked")"
-    printf "  Downloaded:   %s new files\n" "$(bold "$downloaded")"
-    printf "  Skipped:      %s already backed up\n" "$(dim "$skipped")"
-    echo "  ────────────────────────────────────"
-
-    echo
-    read -rp "  $(dim "Press Enter to go back to menu...") " _
-    main_menu
-}
-
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 main() {
@@ -1451,7 +1397,7 @@ main() {
 
     # Backward compatibility: numeric arg triggers quick sync
     if [[ "${1:-}" =~ ^[0-9]+$ ]]; then
-        action_quick_sync "$1"
+        action_sync "$1"
         return
     fi
 
