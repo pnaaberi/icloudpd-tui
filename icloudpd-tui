@@ -882,24 +882,73 @@ download_selection() {
         local end_date="${end_yr}-${end_mo}-${end_day}"
 
         info "Downloading $start_ym to $end_ym ..."
-        dim "  iCloud scans your full library before filtering — this may take a few minutes."; echo > /dev/tty
 
-        # Pipe through grep/sed to clean up icloudpd's verbose output:
-        # - Remove misleading "Downloading N original photos" total count line
-        # - Strip long file paths down to just YYYY/MM/filename
-        # - Simplify log prefixes
-        run_with_retry $ICLOUDPD \
+        # Run icloudpd in background — it enumerates the full library silently
+        # before downloading, so we show a spinner during that wait.
+        local dl_log="$CACHE_DIR/download.log"
+        > "$dl_log"
+        $ICLOUDPD \
             --log-level info \
-            --no-progress-bar \
             --username "$USERNAME" \
             --directory "$TARGET_DIR" \
             --folder-structure "$FOLDER_STRUCTURE" \
             --size "$DL_SIZE" \
             --skip-created-before "$start_date" \
             --skip-created-after "$end_date" \
-            "${type_flags[@]}" 2>&1 \
-            | grep -v "^.*Downloading [0-9]* original" \
-            | sed "s|${TARGET_DIR}/||g; s/^.*INFO */  /; s/^.*DEBUG */  /"
+            "${type_flags[@]}" >> "$dl_log" 2>&1 &
+        local dl_pid=$!
+
+        # Spinner while icloudpd enumerates the library (no Downloaded lines yet)
+        local tty=/dev/tty
+        local frames='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
+        local si=0 dl_started=false
+        tput civis > "$tty" 2>/dev/null || true
+        local dl_start_ts
+        dl_start_ts=$(date +%s)
+
+        while kill -0 "$dl_pid" 2>/dev/null; do
+            # Check if downloads have started
+            if grep -q "Downloaded\|Skipping\|already exists" "$dl_log" 2>/dev/null; then
+                dl_started=true
+                printf '\r\033[K' > "$tty"
+                tput cnorm > "$tty" 2>/dev/null || true
+                break
+            fi
+
+            local now_ts elapsed_s elapsed_fmt
+            now_ts=$(date +%s)
+            elapsed_s=$(( now_ts - dl_start_ts ))
+            if (( elapsed_s >= 60 )); then
+                elapsed_fmt="$(( elapsed_s / 60 ))m$(( elapsed_s % 60 ))s"
+            else
+                elapsed_fmt="${elapsed_s}s"
+            fi
+
+            printf '\r\033[K  \033[38;2;95;138;114m%s\033[0m Scanning iCloud library... \033[2m[%s]\033[0m' \
+                "${frames:si%${#frames}:1}" "$elapsed_fmt" > "$tty"
+            si=$((si + 1))
+            sleep 0.08
+        done
+
+        tput cnorm > "$tty" 2>/dev/null || true
+
+        if $dl_started; then
+            # Stream the rest of the log as it appears, cleaning up icloudpd output
+            local last_line=0
+            while kill -0 "$dl_pid" 2>/dev/null || (( $(wc -l < "$dl_log") > last_line )); do
+                local total_lines
+                total_lines=$(wc -l < "$dl_log")
+                if (( total_lines > last_line )); then
+                    sed -n "$(( last_line + 1 )),${total_lines}p" "$dl_log" \
+                        | grep -v "Downloading [0-9]* original\|Looking up\|Processing user\|Authenticat" \
+                        | sed "s|${TARGET_DIR}/||g; s/^.*INFO */  /; s/^.*DEBUG */  /"
+                    last_line=$total_lines
+                fi
+                sleep 0.2
+            done
+        fi
+
+        wait "$dl_pid" 2>/dev/null || true
     done
 }
 
