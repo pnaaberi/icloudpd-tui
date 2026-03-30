@@ -22,11 +22,18 @@ Interactive TUI wrapper for [iCloud Photos Downloader](https://github.com/icloud
 
 ## Installation
 
-**One-liner install:**
+```bash
+curl -fsSL https://raw.githubusercontent.com/pnaaberi/icloudpd-tui/main/setup.sh | bash
+```
+
+Works on macOS, Arch, Ubuntu, Debian, Fedora. Installs all dependencies automatically.
+
+<details>
+<summary>Manual install</summary>
 
 ```bash
 # macOS
-brew install bash fzf gawk && pipx install icloudpd && git clone https://github.com/pnaaberi/icloudpd-tui.git && cd icloudpd-tui && chmod +x icloudpd-tui && ./icloudpd-tui
+brew install bash fzf gawk pipx && pipx install icloudpd && git clone https://github.com/pnaaberi/icloudpd-tui.git && cd icloudpd-tui && chmod +x icloudpd-tui && ./icloudpd-tui
 
 # Arch / CachyOS
 sudo pacman -S fzf gawk && pipx install icloudpd && git clone https://github.com/pnaaberi/icloudpd-tui.git && cd icloudpd-tui && chmod +x icloudpd-tui && ./icloudpd-tui
@@ -34,6 +41,8 @@ sudo pacman -S fzf gawk && pipx install icloudpd && git clone https://github.com
 # Ubuntu / Debian
 sudo apt install fzf gawk && pipx install icloudpd && git clone https://github.com/pnaaberi/icloudpd-tui.git && cd icloudpd-tui && chmod +x icloudpd-tui && ./icloudpd-tui
 ```
+
+</details>
 
 ## Usage
 
