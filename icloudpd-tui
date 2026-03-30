@@ -129,13 +129,45 @@ show_version() {
 IS_MACOS=false
 [[ "$(uname -s)" == "Darwin" ]] && IS_MACOS=true
 
+# macOS ships bash 3.2 which lacks mapfile and associative arrays.
+# Require bash 4+ to avoid subtle failures.
+if (( BASH_VERSINFO[0] < 4 )); then
+    echo "Error: bash 4.0+ is required (you have ${BASH_VERSION})." >&2
+    if $IS_MACOS; then
+        echo "Install with: brew install bash" >&2
+        echo "Then run: /opt/homebrew/bin/bash $(realpath "$0")" >&2
+    fi
+    exit 1
+fi
+
 # Portable wrappers for commands that differ between Linux and macOS
 file_mtime() {
-    # Get file modification time as epoch seconds
     if $IS_MACOS; then
         stat -f %m "$1" 2>/dev/null
     else
         stat -c %Y "$1" 2>/dev/null
+    fi
+}
+
+du_bytes() {
+    # Get total size in bytes for a directory
+    if $IS_MACOS; then
+        # macOS du doesn't have -b; use -k and multiply
+        local kb
+        kb=$(du -sk "$1" 2>/dev/null | awk '{print $1}') || echo 0
+        echo $(( kb * 1024 ))
+    else
+        du -sb "$1" 2>/dev/null | awk '{print $1}'
+    fi
+}
+
+df_bytes() {
+    # Get disk info in bytes: total used avail percent
+    if $IS_MACOS; then
+        # macOS df uses 512-byte blocks by default
+        df -k "$1" 2>/dev/null | awk 'NR==2{printf "%d %d %d %s\n", $2*1024, $3*1024, $4*1024, $5}'
+    else
+        df -B1 "$1" 2>/dev/null | awk 'NR==2{printf "%d %d %d %s\n", $2, $3, $4, $5}'
     fi
 }
 
@@ -385,12 +417,12 @@ humanize() {
 
 # Populate DISK_TOTAL, DISK_USED, DISK_AVAIL, DISK_PCT globals
 disk_info() {
-    local line
-    line=$(df -B1 "$TARGET_DIR" | tail -1)
-    DISK_TOTAL=$(echo "$line" | awk '{print $2}')
-    DISK_USED=$(echo "$line" | awk '{print $3}')
-    DISK_AVAIL=$(echo "$line" | awk '{print $4}')
-    DISK_PCT=$(echo "$line" | awk '{print $5}')
+    local info
+    info=$(df_bytes "$TARGET_DIR")
+    DISK_TOTAL=$(echo "$info" | awk '{print $1}')
+    DISK_USED=$(echo "$info" | awk '{print $2}')
+    DISK_AVAIL=$(echo "$info" | awk '{print $3}')
+    DISK_PCT=$(echo "$info" | awk '{print $4}')
 }
 
 # Estimate total download size in MB from file counts and average sizes
@@ -498,16 +530,17 @@ pick_directory() {
 
     # --print-query outputs the typed query on line 1 and the selected match on line 2.
     # If the user types a custom path that doesn't match, line 2 is empty — we use line 1.
-    local result
+    local result rc=0
     result=$(printf '%s\n' "${display[@]}" | fzf --ansi --no-multi --no-sort --reverse \
         --color="$FZF_COLORS" \
         --prompt="  path: " --pointer="▸" \
         --print-query \
         --header="$header" \
         --header-first \
-    2>/dev/null || true)
+    2>/dev/null) || rc=$?
 
-    if [[ -z "$result" ]]; then
+    # Esc = exit code 130, no match = 1, match = 0
+    if (( rc == 130 )) || [[ -z "$result" ]]; then
         echo "$default_dir"
         return 0
     fi
@@ -544,18 +577,17 @@ pick_directory() {
 
 # Get the last day of a given YYYY MM (handles leap years via date)
 # Estimate bytes needed for N missing files based on local backup average file size.
-# Returns bytes. Uses du -sb which is fast (cached by filesystem).
+# Estimate bytes needed for N missing files based on local backup average.
 estimate_missing_bytes() {
     local missing_count=$1
     local local_count
     local_count=$(find "$TARGET_DIR" -type f 2>/dev/null | wc -l)
     if (( local_count < 100 )); then
-        # Not enough local data — use conservative 5 MB average
         echo $(( missing_count * 5 * 1048576 ))
         return
     fi
     local total_bytes
-    total_bytes=$(du -sb "$TARGET_DIR" 2>/dev/null | awk '{print $1}')
+    total_bytes=$(du_bytes "$TARGET_DIR")
     local avg_bytes=$(( total_bytes / local_count ))
     echo $(( missing_count * avg_bytes ))
 }
@@ -571,7 +603,7 @@ ensure_cache() { mkdir -p "$CACHE_DIR" && chmod 700 "$CACHE_DIR"; }
 capture_library_total() {
     local log_file=$1
     local total
-    total=$(grep -oP 'Downloading \K[0-9]+(?= original)' "$log_file" 2>/dev/null | head -1)
+    total=$(grep -o 'Downloading [0-9]* original' "$log_file" 2>/dev/null | grep -o '[0-9]*' | head -1) || total=""
     if [[ -n "$total" && "$total" -gt 0 ]]; then
         echo "$total" > "$LIBRARY_TOTAL_FILE"
     fi
@@ -757,14 +789,14 @@ build_tree() {
 
     {
         if [[ -d "$TARGET_DIR" ]]; then
-            find "$TARGET_DIR" -type f 2>/dev/null | sed "s|^${TARGET_DIR}/||"
+            find "$TARGET_DIR" -type f 2>/dev/null | gawk -v prefix="$TARGET_DIR/" '{if (index($0,prefix)==1) print substr($0, length(prefix)+1); else print}'
         fi
     } | gawk -v pext="$PHOTO_EXT" -v vext="$VIDEO_EXT" -v cache="$CACHE_FILE" -v tdir="$TARGET_DIR" '
     BEGIN {
         # Read pending (not yet downloaded) files from the scan cache
         while ((getline line < cache) > 0) {
             # Strip the target directory prefix to get YYYY/MM/filename
-            sub("^" tdir "/", "", line)
+            if (index(line, tdir "/") == 1) line = substr(line, length(tdir) + 2)
             n = split(line, parts, "/")
             if (n < 3) continue
             yr = parts[1]; mo = parts[2]; fn = parts[n]
@@ -1182,7 +1214,7 @@ download_selection() {
             --size "$DL_SIZE" \
             --skip-created-before "$start_date" \
             --skip-created-after "$end_date" \
-            "${type_flags[@]}" >> "$dl_log" 2>&1 &
+            ${type_flags[@]+"${type_flags[@]}"} >> "$dl_log" 2>&1 &
         local dl_pid=$!
         BG_PID=$dl_pid
 
@@ -1229,7 +1261,7 @@ download_selection() {
                 if (( total_lines > last_line )); then
                     sed -n "$(( last_line + 1 )),${total_lines}p" "$dl_log" \
                         | { grep -v "Downloading [0-9]* original\|Looking up\|Processing user\|Authenticat" || true; } \
-                        | sed "s|${TARGET_DIR}/||g; s/^.*INFO */  /; s/^.*DEBUG */  /"
+                        | gawk -v prefix="$TARGET_DIR/" '{while ((i=index($0,prefix))>0) $0=substr($0,1,i-1) substr($0,i+length(prefix)); sub(/^.*INFO */, "  "); sub(/^.*DEBUG */, "  "); print}'
                     last_line=$total_lines
                 fi
                 sleep 0.2
@@ -1258,7 +1290,7 @@ action_sync() {
     if [[ -n "$library_total" && "$library_total" -gt 0 ]]; then
         missing=$(( library_total - local_count ))
         local local_bytes
-        local_bytes=$(du -sb "$TARGET_DIR" 2>/dev/null | awk '{print $1}') || local_bytes=0
+        local_bytes=$(du_bytes "$TARGET_DIR") || local_bytes=0
         printf "  Backed up:    %s of ~%s files (%s)\n" "$(bold "$local_count")" "$(bold "$library_total")" "$(humanize "$local_bytes")"
 
         if (( missing > 0 )); then
@@ -1356,11 +1388,15 @@ action_sync() {
             batch_result=$(sed -n "$(( last_line_count + 1 )),${total_lines}p" "$sync_log" \
                 | gawk -v tdir="$TARGET_DIR" '
                 /Downloaded/ {
-                    sub(".*" tdir "/", ""); gsub(/[[:space:]].*/, "")
+                    idx = index($0, tdir "/")
+                    if (idx) $0 = substr($0, idx + length(tdir) + 1)
+                    gsub(/[[:space:]].*/, "")
                     dl++; print "new|" $0
                 }
                 /already exists|deduplicated/ {
-                    sub(".*" tdir "/", ""); gsub(/[[:space:]].*/, "")
+                    idx = index($0, tdir "/")
+                    if (idx) $0 = substr($0, idx + length(tdir) + 1)
+                    gsub(/[[:space:]].*/, "")
                     sk++; print "ok|" $0
                 }
                 END { print "COUNTS|" dl+0 "|" sk+0 }
