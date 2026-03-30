@@ -22,25 +22,71 @@ Interactive TUI wrapper for [iCloud Photos Downloader](https://github.com/icloud
 
 ## Installation
 
+### Quick install (recommended)
+
 ```bash
 curl -fsSL https://raw.githubusercontent.com/pnaaberi/icloudpd-tui/main/setup.sh | bash
 ```
 
-Works on macOS, Arch, Ubuntu, Debian, Fedora. Installs all dependencies automatically.
+Detects your distro, installs dependencies, and sets up everything.
+
+### Manual install
 
 <details>
-<summary>Manual install</summary>
+<summary>Arch-based (Arch, CachyOS, EndeavourOS, Manjaro, Garuda)</summary>
 
 ```bash
-# macOS
-brew install bash fzf gawk pipx && pipx install icloudpd && git clone https://github.com/pnaaberi/icloudpd-tui.git && cd icloudpd-tui && chmod +x icloudpd-tui && ./icloudpd-tui
-
-# Arch / CachyOS
-sudo pacman -S fzf gawk && pipx install icloudpd && git clone https://github.com/pnaaberi/icloudpd-tui.git && cd icloudpd-tui && chmod +x icloudpd-tui && ./icloudpd-tui
-
-# Ubuntu / Debian
-sudo apt install fzf gawk && pipx install icloudpd && git clone https://github.com/pnaaberi/icloudpd-tui.git && cd icloudpd-tui && chmod +x icloudpd-tui && ./icloudpd-tui
+sudo pacman -S fzf gawk python-pipx git
+pipx install icloudpd
+git clone https://github.com/pnaaberi/icloudpd-tui.git
+cd icloudpd-tui
+chmod +x icloudpd-tui
+./icloudpd-tui
 ```
+
+</details>
+
+<details>
+<summary>Debian-based (Ubuntu, Debian, Pop!_OS, Linux Mint, Zorin OS)</summary>
+
+```bash
+sudo apt install fzf gawk pipx git
+pipx install icloudpd
+git clone https://github.com/pnaaberi/icloudpd-tui.git
+cd icloudpd-tui
+chmod +x icloudpd-tui
+./icloudpd-tui
+```
+
+</details>
+
+<details>
+<summary>Fedora / RHEL-based (Fedora, CentOS Stream, Rocky Linux, AlmaLinux)</summary>
+
+```bash
+sudo dnf install fzf gawk pipx git
+pipx install icloudpd
+git clone https://github.com/pnaaberi/icloudpd-tui.git
+cd icloudpd-tui
+chmod +x icloudpd-tui
+./icloudpd-tui
+```
+
+</details>
+
+<details>
+<summary>macOS (support in progress)</summary>
+
+```bash
+brew install bash fzf gawk pipx
+pipx install icloudpd
+git clone https://github.com/pnaaberi/icloudpd-tui.git
+cd icloudpd-tui
+chmod +x icloudpd-tui
+./icloudpd-tui
+```
+
+Requires bash 4+ (macOS ships 3.2). The script auto-detects and uses brew's bash.
 
 </details>
 
