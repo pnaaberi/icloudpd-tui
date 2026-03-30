@@ -309,7 +309,7 @@ run_setup() {
     echo
 
     local default_dir="${TARGET_DIR:-$HOME/icloud-photos}"
-    dim "  Tab to autocomplete paths"; echo
+    dim "  Press Enter to use the default, or type a new path (Tab to autocomplete)"; echo
     read -erp "  Directory [$default_dir]: " input
     TARGET_DIR="${input:-$default_dir}"
     TARGET_DIR="${TARGET_DIR/#\~/$HOME}"  # expand ~
