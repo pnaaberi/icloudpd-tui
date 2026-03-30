@@ -912,7 +912,20 @@ confirm_download() {
     echo
     accent "  Download Summary"; echo
     echo "  ────────────────────────────────────"
-    printf "  Saving to:  %s\n" "$(dim "$TARGET_DIR")"
+    printf "  Saving to:  %s\n" "$(bold "$TARGET_DIR")"
+    read -rp "  $(dim "Change? Enter new path or press Enter to keep:") " new_dir
+    if [[ -n "$new_dir" ]]; then
+        new_dir="${new_dir/#\~/$HOME}"
+        if [[ ! -d "$new_dir" ]]; then
+            read -rp "  $(dim "Directory doesn't exist. Create it? [Y/n]") " create
+            case "$create" in
+                [nN]*) info "Cancelled."; main_menu; return ;;
+                *) mkdir -p "$new_dir" && info "Created $new_dir" ;;
+            esac
+        fi
+        TARGET_DIR="$new_dir"
+        info "Downloading to: $TARGET_DIR"
+    fi
     printf "  Folders:    %s\n" "$(dim "${months[*]}")"
     printf "  Filter:     %s\n" "$(accent "$type_filter")"
     printf "  New files:  %s photos, %s videos\n" "$(bold "$dl_photos")" "$(bold "$dl_videos")"
@@ -1100,7 +1113,20 @@ action_sync() {
     echo
     accent "  Sync iCloud Photos"; echo
     echo "  ────────────────────────────────────"
-    dim "  Saving to: $TARGET_DIR"; echo
+    printf "  Saving to: %s\n" "$(bold "$TARGET_DIR")"
+    read -rp "  $(dim "Change location? Enter new path or press Enter to keep:") " new_dir
+    if [[ -n "$new_dir" ]]; then
+        new_dir="${new_dir/#\~/$HOME}"
+        if [[ ! -d "$new_dir" ]]; then
+            read -rp "  $(dim "Directory doesn't exist. Create it? [Y/n]") " create
+            case "$create" in
+                [nN]*) info "Cancelled."; main_menu; return ;;
+                *) mkdir -p "$new_dir" && info "Created $new_dir" ;;
+            esac
+        fi
+        TARGET_DIR="$new_dir"
+        info "Downloading to: $TARGET_DIR"
+    fi
     echo
 
     local missing=0
