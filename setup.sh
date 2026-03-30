@@ -273,13 +273,8 @@ printf "${D}  Installed to: %s${R}\n" "$INSTALL_DIR"
 printf "${D}  Binary:       %s/icloudpd-tui${R}\n" "$BIN_DIR"
 echo
 
-if [[ -t 0 ]]; then
-    read -rp "  Launch now? [Y/n] " launch
-else
-    # Piped from curl — can't read stdin, ask user to run manually
-    read -rp "  Launch now? [Y/n] " launch < /dev/tty || launch="n"
-fi
+read -rp "  Launch now? [Y/n] " launch < /dev/tty || launch="n"
 case "$launch" in
     [nN]*) ;;
-    *) exec icloudpd-tui ;;
+    *) exec icloudpd-tui < /dev/tty ;;
 esac
