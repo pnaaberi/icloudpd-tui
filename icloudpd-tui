@@ -264,7 +264,7 @@ run_setup() {
     while (( i < len )); do
         printf '\r  %s%s%s%s%s%s' "$d" "${full_line:0:i}" "$w" "${full_line:i:1}" "$r" "$d"
         i=$((i + 1))
-        sleep 0.012
+        sleep 0.03
     done
     printf '\r  %s%s%s' "$d" "$full_line" "$r"
     echo
