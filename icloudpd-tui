@@ -690,6 +690,7 @@ main_menu() {
         "  Quick Sync           Grab all new photos quickly" \
         "  Disk Status          Check backup drive space" \
         "  Rescan Library       Look for new photos in iCloud" \
+        "  Settings             Change download location or account" \
         "  Quit                 Exit the program" \
     | fzf --ansi --no-multi --no-sort --reverse \
         --color="$FZF_COLORS" \
@@ -703,6 +704,7 @@ main_menu() {
         *"Quick Sync"*)        action_quick_sync ;;
         *"Disk Status"*)       action_disk_status ;;
         *"Rescan Library"*)    action_rescan ;;
+        *"Settings"*)          run_setup; main_menu; return ;;
         *)                      info "Bye."; exit 0 ;;
     esac
 }
@@ -1019,26 +1021,78 @@ action_quick_sync() {
 
 action_disk_status() {
     disk_info
+    calibrate_averages
+
     echo
     accent "  Disk Status"; echo
     echo "  ────────────────────────────────────"
-    printf "  Target:    %s\n" "$(dim "$TARGET_DIR")"
-    printf "  Mount:     %s\n" "$(dim "$MOUNT_POINT")"
-    printf "  Total:     %s\n" "$(bold "$(humanize "$DISK_TOTAL")")"
-    printf "  Used:      %s (%s)\n" "$(bold "$(humanize "$DISK_USED")")" "$DISK_PCT"
-    printf "  Available: %s\n" "$(bold "$(humanize "$DISK_AVAIL")")"
+    printf "  Target:      %s\n" "$(dim "$TARGET_DIR")"
+    [[ -n "$MOUNT_POINT" ]] && printf "  Drive:       %s\n" "$(dim "$MOUNT_POINT")"
+    echo
+
+    # Visual usage bar
+    local pct_num=${DISK_PCT%\%}
+    local bar_width=20
+    local filled=$(( pct_num * bar_width / 100 ))
+    local empty=$(( bar_width - filled ))
+    local bar=""
+    for ((b=0; b<filled; b++)); do bar+="█"; done
+    for ((b=0; b<empty; b++)); do bar+="░"; done
+
+    local bar_color
+    if (( pct_num >= 95 )); then bar_color="31";   # red
+    elif (( pct_num >= 85 )); then bar_color="33";  # yellow
+    else bar_color="38;2;95;138;114";               # accent green
+    fi
+    printf "  Usage:       \033[${bar_color}m[%s]\033[0m %s\n" "$bar" "$DISK_PCT"
+
+    printf "  Total:       %s\n" "$(bold "$(humanize "$DISK_TOTAL")")"
+    printf "  Used:        %s\n" "$(humanize "$DISK_USED")"
+
+    if (( pct_num >= 95 )); then
+        printf "  Available:   %s  \033[31malmost full!\033[0m\n" "$(bold "$(humanize "$DISK_AVAIL")")"
+    elif (( pct_num >= 85 )); then
+        printf "  Available:   %s  \033[33m⚠ running low\033[0m\n" "$(bold "$(humanize "$DISK_AVAIL")")"
+    else
+        printf "  Available:   %s\n" "$(bold "$(humanize "$DISK_AVAIL")")"
+    fi
     echo "  ────────────────────────────────────"
 
+    local local_count=0 pending=0
     if [[ -d "$TARGET_DIR" ]]; then
-        local local_count
         local_count=$(find "$TARGET_DIR" -type f 2>/dev/null | wc -l)
-        printf "  Local files: %s\n" "$(bold "$local_count")"
+    fi
+    if [[ -f "$CACHE_FILE" ]]; then
+        pending=$(wc -l < "$CACHE_FILE")
     fi
 
-    if [[ -f "$CACHE_FILE" ]]; then
-        local pending
-        pending=$(wc -l < "$CACHE_FILE")
-        printf "  Pending:     %s\n" "$(bold "$pending")"
+    printf "  Backed up:   %s files\n" "$(bold "$local_count")"
+
+    if (( pending > 0 )); then
+        # Estimate space needed for pending files
+        local pending_photos=0 pending_videos=0
+        if [[ -f "$CACHE_DIR/tree.txt" ]]; then
+            while IFS='|' read -r type _ _ _ _ pp pv; do
+                if [[ "$type" == "M" ]]; then
+                    pending_photos=$((pending_photos + pp))
+                    pending_videos=$((pending_videos + pv))
+                fi
+            done < "$CACHE_DIR/tree.txt"
+        fi
+        local est_mb
+        est_mb=$(estimate_size_mb "$pending_photos" "$pending_videos")
+        printf "  Pending:     %s files (~%s MB needed)\n" "$(bold "$pending")" "$est_mb"
+
+        echo
+        local est_bytes=$(( est_mb * 1048576 ))
+        if (( est_bytes > DISK_AVAIL )); then
+            printf "  \033[31mNot enough space for pending downloads.\033[0m\n"
+            dim "  Free up space or download selectively via Browse & Download."; echo
+        else
+            printf "  $(accent "Enough space for pending downloads.")\n"
+        fi
+    else
+        printf "  Pending:     %s\n" "$(accent "none — everything is synced")"
     fi
 
     echo "  ────────────────────────────────────"
