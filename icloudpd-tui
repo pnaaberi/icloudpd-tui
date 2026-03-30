@@ -176,55 +176,139 @@ EOF
 
 run_setup() {
     echo
-    accent "  First-time setup"; echo
+    accent "  Welcome! Let's set up your iCloud photo backup."; echo
+    dim "  This takes about a minute. Your settings stay on this computer."; echo
+    echo
+
+    # ── Step 1: Apple ID ──────────────────────────────────────────────────────
+    local input
+    accent "  Step 1 of 3 — Apple ID"; echo
     echo "  ────────────────────────────────────"
-    echo
-    dim "  Your settings are stored locally and never shared."; echo
+    dim "  Enter the email address for your iCloud account."; echo
     echo
 
-    # Username
     local default_user="$USERNAME"
-    read -rp "  Apple ID email${default_user:+ [$default_user]}: " input
-    USERNAME="${input:-$default_user}"
+    while true; do
+        read -rp "  Apple ID${default_user:+ [$default_user]}: " input
+        input="${input:-$default_user}"
+        if [[ "$input" == *@*.* ]]; then
+            USERNAME="$input"
+            break
+        elif [[ -z "$input" ]]; then
+            err "  Apple ID is required."
+        else
+            err "  That doesn't look like an email address. Try again."
+        fi
+    done
+    echo
 
-    if [[ -z "$USERNAME" ]]; then
-        err "  Apple ID is required."
-        exit 1
+    # ── Step 2: Download location ─────────────────────────────────────────────
+    accent "  Step 2 of 3 — Download location"; echo
+    echo "  ────────────────────────────────────"
+    dim "  Where should photos be saved? This can be an external"; echo
+    dim "  drive or any folder on your computer."; echo
+    echo
+
+    local default_dir="${TARGET_DIR:-$HOME/icloud-photos}"
+    read -rp "  Directory [$default_dir]: " input
+    TARGET_DIR="${input:-$default_dir}"
+    TARGET_DIR="${TARGET_DIR/#\~/$HOME}"  # expand ~
+
+    if [[ ! -d "$TARGET_DIR" ]]; then
+        dim "  Directory doesn't exist yet."; echo
+        read -rp "  Create it? [Y/n] " input
+        case "$input" in
+            [nN]*) err "  Can't continue without a download directory."; exit 1 ;;
+            *)
+                mkdir -p "$TARGET_DIR"
+                info "Created $TARGET_DIR"
+                ;;
+        esac
+    fi
+    echo
+
+    # ── Step 3: Drive check ───────────────────────────────────────────────────
+    accent "  Step 3 of 3 — Drive check (optional)"; echo
+    echo "  ────────────────────────────────────"
+    dim "  If your photos go on an external drive, we can check"; echo
+    dim "  it's plugged in before each download."; echo
+    dim "  Leave blank to skip this check."; echo
+    echo
+
+    local default_mount="$MOUNT_POINT"
+    # Try to auto-detect: if TARGET_DIR is on a removable mount, suggest it
+    if [[ -z "$default_mount" ]]; then
+        local detected
+        detected=$(df "$TARGET_DIR" 2>/dev/null | awk 'NR==2{print $6}')
+        if [[ "$detected" == /run/media/* || "$detected" == /mnt/* || "$detected" == /media/* ]]; then
+            default_mount="$detected"
+        fi
     fi
 
-    # Target directory
-    local default_dir="${TARGET_DIR:-$HOME/icloud-photos}"
-    read -rp "  Download directory [$default_dir]: " input
-    TARGET_DIR="${input:-$default_dir}"
-
-    # Mount point
-    local default_mount
-    # Try to guess mount point from TARGET_DIR
-    default_mount="${MOUNT_POINT:-$(df "$TARGET_DIR" 2>/dev/null | awk 'NR==2{print $6}' || echo "")}"
-    read -rp "  Mount point to check${default_mount:+ [$default_mount]}: " input
+    read -rp "  Mount point${default_mount:+ [$default_mount]}: " input
     MOUNT_POINT="${input:-$default_mount}"
+
+    if [[ -n "$MOUNT_POINT" ]] && ! mountpoint -q "$MOUNT_POINT" 2>/dev/null; then
+        dim "  Note: $MOUNT_POINT is not mounted right now. That's fine if"; echo
+        dim "  the drive is unplugged — we'll check before each download."; echo
+    fi
+    echo
+
+    # ── Summary ───────────────────────────────────────────────────────────────
+    accent "  Summary"; echo
+    echo "  ────────────────────────────────────"
+    printf "  Apple ID:      %s\n" "$(bold "$USERNAME")"
+    printf "  Directory:     %s\n" "$(bold "$TARGET_DIR")"
+    if [[ -n "$MOUNT_POINT" ]]; then
+        printf "  Drive check:   %s\n" "$(bold "$MOUNT_POINT")"
+    else
+        printf "  Drive check:   %s\n" "$(dim "none (local folder)")"
+    fi
+    echo "  ────────────────────────────────────"
+    echo
+
+    read -rp "  Save and test iCloud login? [Y/n] " input
+    case "$input" in
+        [nN]*) err "  Setup cancelled."; exit 0 ;;
+    esac
 
     echo
     save_config
+
+    # ── Auth test ─────────────────────────────────────────────────────────────
+    echo
+    info "Testing iCloud login..."
+    dim "  You may be asked for your password and a verification code."; echo
+    echo
+    if $ICLOUDPD --auth-only --username "$USERNAME"; then
+        echo
+        info "Setup complete! Run $(bold "icloudpd-tui") to start."
+    else
+        echo
+        err "  Login failed — but your settings are saved."
+        err "  You can fix this later by running: icloudpd-tui --setup"
+    fi
     echo
 }
 
 ensure_config() {
     load_config
 
-    # Check if required values are set
-    if [[ -z "$USERNAME" || -z "$TARGET_DIR" || -z "$MOUNT_POINT" ]]; then
-        info "Welcome! Let's set up icloudpd-tui."
+    # Check if required values are set (mount point is optional)
+    if [[ -z "$USERNAME" || -z "$TARGET_DIR" ]]; then
+        banner
         run_setup
     fi
 
-    # Create target directory if it doesn't exist
     mkdir -p "$TARGET_DIR" 2>/dev/null || true
 }
 
 # ── Utilities ─────────────────────────────────────────────────────────────────
 
 check_mount() {
+    # Skip check if no mount point configured (local folder setup)
+    [[ -z "$MOUNT_POINT" ]] && return 0
+
     if ! mountpoint -q "$MOUNT_POINT" 2>/dev/null; then
         err "Backup drive not found."
         err "Please plug in the drive and make sure it appears at:"
@@ -895,7 +979,7 @@ main() {
     case "${1:-}" in
         --help|-h)    show_help ;;
         --version|-v) show_version ;;
-        --setup)      run_setup; exit 0 ;;
+        --setup)      check_deps; load_config; banner; run_setup; exit 0 ;;
     esac
 
     check_deps
