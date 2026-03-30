@@ -418,34 +418,56 @@ pick_directory() {
     done
 
     local header
-    header=$(printf '  %s\n  %s\n  %s' \
+    header=$(printf '  %s\n  %s\n  %s\n  %s' \
         "$(accent "Where should files be saved?")" \
         "$(dim "Files will be organized as: <directory>/YYYY/MM/photo.jpg")" \
-        "$(dim "Select a directory, or Esc to keep current location")")
+        "$(dim "Select a directory, or type a custom path")" \
+        "$(dim "Esc = keep current location")")
 
-    local choice
-    choice=$(printf '%s\n' "${display[@]}" | fzf --ansi --no-multi --no-sort --reverse \
+    # --print-query outputs the typed query on line 1 and the selected match on line 2.
+    # If the user types a custom path that doesn't match, line 2 is empty — we use line 1.
+    local result
+    result=$(printf '%s\n' "${display[@]}" | fzf --ansi --no-multi --no-sort --reverse \
         --color="$FZF_COLORS" \
-        --prompt="  " --pointer="▸" \
+        --prompt="  path: " --pointer="▸" \
+        --print-query \
         --header="$header" \
         --header-first \
-    || true)
+    2>/dev/null || true)
 
-    if [[ -z "$choice" ]]; then
-        # Esc pressed — keep current
+    if [[ -z "$result" ]]; then
         echo "$default_dir"
         return 0
     fi
 
-    # Extract path (everything before the free space info)
-    local selected
-    selected=$(echo "$choice" | awk '{print $1}')
+    local query selected
+    query=$(echo "$result" | sed -n '1p')
+    selected=$(echo "$result" | sed -n '2p')
 
-    if [[ -d "$selected" ]]; then
-        echo "$selected"
+    # Prefer the matched selection; fall back to typed query
+    local chosen
+    if [[ -n "$selected" ]]; then
+        # Extract path (everything before the free space info)
+        chosen=$(echo "$selected" | awk '{print $1}')
+    elif [[ -n "$query" ]]; then
+        # User typed a custom path
+        chosen="${query/#\~/$HOME}"
     else
         echo "$default_dir"
+        return 0
     fi
+
+    # Create directory if it doesn't exist
+    if [[ ! -d "$chosen" ]]; then
+        printf "  Directory %s doesn't exist.\n" "$(bold "$chosen")" > /dev/tty
+        read -rp "  Create it? [Y/n] " create < /dev/tty
+        case "$create" in
+            [nN]*) echo "$default_dir"; return 0 ;;
+            *) mkdir -p "$chosen" && info "Created $chosen" > /dev/tty ;;
+        esac
+    fi
+
+    echo "$chosen"
 }
 
 # Get the last day of a given YYYY MM (handles leap years via date)
