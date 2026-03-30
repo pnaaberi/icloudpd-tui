@@ -3,461 +3,555 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>icloudpd-tui — Interactive Demo</title>
+<title>icloudpd-tui — Demo</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap');
-
   * { margin: 0; padding: 0; box-sizing: border-box; }
-
   body {
     background: #080e0c;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
     min-height: 100vh;
     font-family: 'JetBrains Mono', monospace;
     padding: 2rem;
   }
-
-  h1 {
-    color: #8fbcaa;
-    font-size: 1.2rem;
-    margin-bottom: 0.5rem;
-    font-weight: 400;
-  }
-
-  .subtitle {
-    color: #5f8a72;
-    font-size: 0.8rem;
-    margin-bottom: 1.5rem;
-  }
-
+  h1 { color: #8fbcaa; font-size: 1.1rem; margin-bottom: 0.3rem; font-weight: 400; }
+  .sub { color: #5f8a72; font-size: 0.75rem; margin-bottom: 1.2rem; }
   .terminal {
-    background: #0d1512;
-    border: 1px solid #1e3a2e;
-    border-radius: 12px;
-    width: 100%;
-    max-width: 780px;
-    min-height: 520px;
+    background: #0d1512; border: 1px solid #1e3a2e; border-radius: 12px;
+    width: 100%; max-width: 780px; min-height: 480px;
     overflow: hidden;
     box-shadow: 0 20px 60px rgba(0,0,0,0.5), 0 0 40px rgba(95,138,114,0.05);
   }
-
   .titlebar {
-    background: #0a100e;
-    padding: 10px 16px;
-    display: flex;
-    align-items: center;
-    gap: 8px;
+    background: #0a100e; padding: 10px 16px;
+    display: flex; align-items: center; gap: 8px;
     border-bottom: 1px solid #1e3a2e;
   }
-
   .dot { width: 12px; height: 12px; border-radius: 50%; }
-  .dot.red { background: #ff5f56; }
-  .dot.yellow { background: #ffbd2e; }
-  .dot.green { background: #27c93f; }
-
-  .titlebar-text {
-    color: #5f8a72;
-    font-size: 0.7rem;
-    margin-left: auto;
+  .dot.r { background: #ff5f56; } .dot.y { background: #ffbd2e; } .dot.g { background: #27c93f; }
+  .titlebar span { color: #5f8a72; font-size: 0.7rem; margin-left: auto; }
+  .screen { padding: 16px 20px; min-height: 450px; overflow-y: auto; max-height: 500px; }
+  #out {
+    color: #b0c4c0; font-size: 0.8rem; line-height: 1.55;
+    white-space: pre-wrap; word-break: break-word;
   }
-
-  .screen {
-    padding: 20px 24px;
-    min-height: 480px;
-    position: relative;
-  }
-
-  .output {
-    color: #b0c4c0;
-    font-size: 0.82rem;
-    line-height: 1.6;
-    white-space: pre-wrap;
-    word-break: break-word;
-  }
-
-  .dim { color: #64897a; }
-  .accent { color: #5f8a72; }
-  .bold { font-weight: 700; color: #d0e8e0; }
-  .green { color: #5f8a72; }
-  .white { color: #e8f0ee; font-weight: 700; }
-  .yellow { color: #c4a84e; }
-  .red { color: #c44e4e; }
-
-  .box { color: #5f8a72; }
-  .box-text { font-weight: 700; color: #d0e8e0; }
-
   .cursor {
-    display: inline-block;
-    width: 8px;
-    height: 16px;
-    background: #5f8a72;
+    display: inline-block; background: #5f8a72;
+    width: 7.5px; height: 14px; vertical-align: text-bottom;
     animation: blink 1s step-end infinite;
-    vertical-align: text-bottom;
   }
-
-  @keyframes blink {
-    50% { opacity: 0; }
-  }
-
-  .menu-item {
-    padding: 2px 0;
-    display: block;
-  }
-
-  .menu-item.selected {
-    background: #162420;
-    color: #d0e8e0;
-  }
-
-  .menu-item .pointer {
-    color: #5f8a72;
-    margin-right: 4px;
-  }
-
+  @keyframes blink { 50% { opacity: 0; } }
   .controls {
-    display: flex;
-    gap: 12px;
-    margin-top: 1.5rem;
-    flex-wrap: wrap;
-    justify-content: center;
+    display: flex; gap: 10px; margin-top: 1.2rem; flex-wrap: wrap; justify-content: center;
   }
-
   .btn {
-    background: #162420;
-    color: #8fbcaa;
-    border: 1px solid #2a4a3a;
-    padding: 8px 20px;
-    border-radius: 6px;
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 0.8rem;
-    cursor: pointer;
-    transition: all 0.15s;
+    background: #162420; color: #8fbcaa; border: 1px solid #2a4a3a;
+    padding: 7px 18px; border-radius: 6px;
+    font-family: 'JetBrains Mono', monospace; font-size: 0.75rem;
+    cursor: pointer; transition: all 0.15s;
   }
-
-  .btn:hover {
-    background: #1e3a2e;
-    border-color: #5f8a72;
-    color: #d0e8e0;
-  }
-
-  .btn.active {
-    background: #5f8a72;
-    color: #0d1512;
-    border-color: #5f8a72;
-  }
-
-  .btn:disabled {
-    opacity: 0.3;
-    cursor: not-allowed;
-  }
-
-  .progress-bar {
-    width: 100%;
-    max-width: 780px;
-    display: flex;
-    gap: 4px;
-    margin-top: 1rem;
-  }
-
-  .progress-step {
-    flex: 1;
-    height: 3px;
-    background: #1e3a2e;
-    border-radius: 2px;
-    transition: background 0.3s;
-  }
-
-  .progress-step.done { background: #5f8a72; }
-  .progress-step.current { background: #8fbcaa; }
-
-  .footer {
-    color: #3d5c4a;
-    font-size: 0.7rem;
-    margin-top: 1.5rem;
-    text-align: center;
-  }
-
+  .btn:hover { background: #1e3a2e; border-color: #5f8a72; color: #d0e8e0; }
+  .btn.active { background: #5f8a72; color: #0d1512; }
+  .footer { color: #3d5c4a; font-size: 0.65rem; margin-top: 1.2rem; text-align: center; }
   .footer a { color: #5f8a72; text-decoration: none; }
   .footer a:hover { text-decoration: underline; }
-
-  .spinner {
-    display: inline-block;
-    animation: spin 0.8s steps(10) infinite;
-  }
-
-  @keyframes spin {
-    0% { content: '⠋'; }
-    10% { content: '⠙'; }
-    20% { content: '⠹'; }
-    30% { content: '⠸'; }
-    40% { content: '⠼'; }
-    50% { content: '⠴'; }
-    60% { content: '⠦'; }
-    70% { content: '⠧'; }
-    80% { content: '⠇'; }
-    90% { content: '⠏'; }
-  }
+  .speed-info { color: #3d5c4a; font-size: 0.65rem; margin-top: 0.5rem; }
 </style>
 </head>
 <body>
-
 <h1>icloudpd-tui</h1>
-<p class="subtitle">Interactive TUI for iCloud Photos Downloader</p>
-
+<p class="sub">Interactive TUI for iCloud Photos Downloader</p>
 <div class="terminal">
   <div class="titlebar">
-    <div class="dot red"></div>
-    <div class="dot yellow"></div>
-    <div class="dot green"></div>
-    <span class="titlebar-text">~/icloudpd-tui</span>
+    <div class="dot r"></div><div class="dot y"></div><div class="dot g"></div>
+    <span>~/icloudpd-tui</span>
   </div>
-  <div class="screen">
-    <div class="output" id="output"></div>
-  </div>
+  <div class="screen"><pre id="out"></pre></div>
 </div>
-
-<div class="progress-bar" id="progress">
-  <div class="progress-step" data-step="0"></div>
-  <div class="progress-step" data-step="1"></div>
-  <div class="progress-step" data-step="2"></div>
-  <div class="progress-step" data-step="3"></div>
-  <div class="progress-step" data-step="4"></div>
-  <div class="progress-step" data-step="5"></div>
-  <div class="progress-step" data-step="6"></div>
-  <div class="progress-step" data-step="7"></div>
-</div>
-
 <div class="controls">
-  <button class="btn" id="btnPrev" disabled>&larr; Back</button>
-  <button class="btn active" id="btnNext">Next &rarr;</button>
+  <button class="btn active" id="btnPlay">Play</button>
+  <button class="btn" id="btnSkip">Skip to menu</button>
   <button class="btn" id="btnRestart">Restart</button>
 </div>
-
+<p class="speed-info">Spacebar = pause/resume &middot; Arrow keys = skip forward/back</p>
 <p class="footer">
   <a href="https://github.com/pnaaberi/icloudpd-tui">GitHub</a> &middot;
-  Wraps <a href="https://github.com/icloud-photos-downloader/icloud_photos_downloader">icloudpd</a> &middot;
-  MIT License
+  Wraps <a href="https://github.com/icloud-photos-downloader/icloud_photos_downloader">icloudpd</a> &middot; MIT License
 </p>
-
 <script>
-const $ = id => document.getElementById(id);
-const output = $('output');
+const out = document.getElementById('out');
+const G = '\x1b[G';  // accent green
+const D = '\x1b[D';  // dim
+const B = '\x1b[B';  // bold white
+const W = '\x1b[W';  // bright white
+const Y = '\x1b[Y';  // yellow
+const R = '\x1b[R';  // reset
+const GR = '\x1b[GR'; // green (for new files)
 
-const screens = [
-  // 0: Banner + welcome
-  () => `<span class="box">  ╭─────────────────────╮
-  │</span><span class="box-text">  iCloud Photos TUI  </span><span class="box">│
-  ╰─────────────────────╯</span>
-<span class="dim">  Press Ctrl+C at any time to quit safely.</span>
+const colorMap = {
+  '\x1b[G': 'color:#5f8a72',
+  '\x1b[D': 'color:#64897a',
+  '\x1b[B': 'color:#d0e8e0;font-weight:700',
+  '\x1b[W': 'color:#e8f0ee;font-weight:700',
+  '\x1b[Y': 'color:#c4a84e',
+  '\x1b[GR': 'color:#5fad72',
+};
 
-
-<span class="accent">  Welcome! Let's set up your iCloud photo backup.</span>
-<span class="dim">  This takes about a minute. Your settings stay on this computer.</span>
-
-<span class="dim">  Steps: 1) Apple ID  →  2) Download location  →  3) Login test</span>
-`,
-
-  // 1: Step 1 — Apple ID
-  () => `<span class="accent">  Step 1 of 3 — Apple ID</span>
-  ────────────────────────────────────
-<span class="dim">  Enter the email address for your iCloud account.</span>
-
-  Apple ID: <span class="bold">user@icloud.com</span>
-`,
-
-  // 2: Step 2 — Download location
-  () => `<span class="accent">  Step 2 of 3 — Download location</span>
-  ────────────────────────────────────
-<span class="dim">  Where should photos be saved? This can be an external
-  drive or any folder on your computer.</span>
-
-<span class="dim">  Press Enter to use the default, or type a new path (Tab to autocomplete)</span>
-  Directory [~/icloud-photos]: <span class="bold">/run/media/user/BACKUP/Photos</span>
-
-<span class="accent">  Step 3 of 3 — External drive detected</span>
-  ────────────────────────────────────
-  Your photos are saved on: <span class="bold">/run/media/user/BACKUP</span>
-<span class="dim">  We can check this drive is plugged in before each download,
-  so you don't get errors if it's disconnected.</span>
-
-  Enable this check? [Y/n] <span class="bold">y</span>
-`,
-
-  // 3: Summary + auth
-  () => `<span class="accent">  Summary</span>
-  ────────────────────────────────────
-  Apple ID:      <span class="bold">user@icloud.com</span>
-  Directory:     <span class="bold">/run/media/user/BACKUP/Photos</span>
-  Drive check:   <span class="bold">/run/media/user/BACKUP</span>
-  ────────────────────────────────────
-
-  Save and test iCloud login? [Y/n] <span class="bold">y</span>
-
-<span class="accent"> </span> Config saved to ~/.config/icloudpd-tui/config
-
-<span class="accent"> </span> Testing iCloud login...
-<span class="dim">  You may be asked for your password and a verification code.</span>
-
-  Authenticating... <span class="green">Authentication completed successfully</span>
-
-<span class="accent"> </span> Setup complete!
-`,
-
-  // 4: Main menu
-  () => {
-    const items = [
-      { label: 'Sync', desc: 'Download new and missing files from iCloud', selected: true },
-      { label: 'Browse Library', desc: 'View your backup organized by year and month' },
-      { label: 'Download by Date', desc: 'Pick specific months to re-sync from iCloud' },
-      { label: 'Disk Status', desc: 'Check backup drive space and storage estimates' },
-      { label: 'Settings', desc: 'Change Apple ID, download location, or drive' },
-      { label: 'Log Out', desc: 'Clear iCloud session and credentials' },
-      { label: 'Quit', desc: 'Exit the program' },
-    ];
-    let menu = `<span class="dim">  ────────────────────────────────────</span>
-  <span class="dim">Account:</span>  <span class="bold">user@icloud.com</span>
-  <span class="dim">Backup:</span>   <span class="bold">27016</span> of ~<span class="bold">51391</span> iCloud files (52%)
-<span class="yellow">           ~24375 files not backed up (~202 GB needed)</span>
-  <span class="dim">Disk:</span>     62.4 GB free of 915.8 GB
-<span class="dim">  ────────────────────────────────────</span>
-
-<span class="dim">  Use arrow keys ↑↓ to move, Enter to select, Esc to quit</span>
-
-`;
-    items.forEach(item => {
-      if (item.selected) {
-        menu += `<span class="menu-item selected"><span class="pointer">▸</span> <span class="bold">${item.label.padEnd(20)}</span> ${item.desc}</span>\n`;
-      } else {
-        menu += `<span class="menu-item">  ${item.label.padEnd(20)} <span class="dim">${item.desc}</span></span>\n`;
+function parse(text) {
+  let html = '';
+  let i = 0;
+  while (i < text.length) {
+    if (text[i] === '\x1b') {
+      let end = text.indexOf(']', i);
+      if (end === -1) { html += text[i]; i++; continue; }
+      const code = text.substring(i, end + 1);
+      if (code === '\x1b[R') {
+        html += '</span>';
+      } else if (colorMap[code]) {
+        html += `<span style="${colorMap[code]}">`;
       }
-    });
-    return menu;
-  },
+      i = end + 1;
+    } else {
+      const ch = text[i];
+      html += ch === '<' ? '&lt;' : ch === '>' ? '&gt;' : ch === '&' ? '&amp;' : ch;
+      i++;
+    }
+  }
+  return html;
+}
 
-  // 5: Sync screen
-  () => `<span class="accent">  Sync iCloud Photos</span>
-  ────────────────────────────────────
+// Script: array of [action, ...args]
+// 'print' - instant line
+// 'type' - character by character (user input)
+// 'wait' - pause ms
+// 'clear' - clear screen
+// 'sweep' - animated text sweep
+// 'spinner' - show spinner for N ms
+// 'lines' - print multiple lines with delay between
 
-  <span class="dim">Where should files be saved?</span>
-  <span class="dim">Files will be organized as: &lt;directory&gt;/YYYY/MM/photo.jpg</span>
+const script = [
+  // Banner
+  ['print', `${G}  ╭─────────────────────╮${R}`],
+  ['print', `${G}  │${R}${B}  iCloud Photos TUI  ${R}${G}│${R}`],
+  ['print', `${G}  ╰─────────────────────╯${R}`],
+  ['print', `${D}  Press Ctrl+C at any time to quit safely.${R}`],
+  ['print', ''],
+  ['wait', 500],
 
-<span class="menu-item selected"><span class="pointer">▸</span> /run/media/user/BACKUP/Photos    62G free  (current)</span>
-<span class="menu-item">  /run/media/user/BACKUP            62G free</span>
-<span class="menu-item">  /home/user                        450G free</span>
+  // Welcome
+  ['print', ''],
+  ['print', `${G}  Welcome! Let's set up your iCloud photo backup.${R}`],
+  ['print', `${D}  This takes about a minute. Your settings stay on this computer.${R}`],
+  ['print', ''],
+  ['wait', 300],
+  ['sweep', '  1) Apple ID  →  2) Download location  →  3) Login test'],
+  ['print', ''],
+  ['wait', 600],
 
-  ────────────────────────────────────
+  // Step 1
+  ['print', `${G}  Step 1 of 3 — Apple ID${R}`],
+  ['print', '  ────────────────────────────────────'],
+  ['print', `${D}  Enter the email address for your iCloud account.${R}`],
+  ['print', ''],
+  ['wait', 400],
+  ['prompt', '  Apple ID: '],
+  ['type', 'user@icloud.com'],
+  ['wait', 300],
+  ['enter'],
+  ['print', ''],
+  ['wait', 300],
 
-  Backed up:    <span class="bold">27016</span> of ~<span class="bold">51391</span> files (209.0 GB)
-  Missing:      ~<span class="bold">24375</span> files (~<span class="bold">202.3 GB</span>)
-  Disk free:    <span class="bold">62.4 GB</span>
+  // Step 2
+  ['print', `${G}  Step 2 of 3 — Download location${R}`],
+  ['print', '  ────────────────────────────────────'],
+  ['print', `${D}  Where should photos be saved? This can be an external${R}`],
+  ['print', `${D}  drive or any folder on your computer.${R}`],
+  ['print', ''],
+  ['print', `${D}  Press Enter to use the default, or type a new path (Tab to autocomplete)${R}`],
+  ['prompt', '  Directory [~/icloud-photos]: '],
+  ['type', '/mnt/backup/Photos'],
+  ['wait', 200],
+  ['enter'],
+  ['wait', 200],
+  ['print', ''],
 
-<span class="yellow">  ⚠ Not enough space for all missing files.
-    Need ~139.9 GB more. Will download as much as possible.</span>
+  // Drive detection
+  ['print', `${G}  Step 3 of 3 — External drive detected${R}`],
+  ['print', '  ────────────────────────────────────'],
+  ['print', `  Your photos are saved on: ${B}/mnt/backup${R}`],
+  ['print', `${D}  We can check this drive is plugged in before each download,${R}`],
+  ['print', `${D}  so you don't get errors if it's disconnected.${R}`],
+  ['print', ''],
+  ['prompt', '  Enable this check? [Y/n] '],
+  ['type', 'y'],
+  ['enter'],
+  ['print', ''],
+  ['wait', 400],
 
-<span class="dim">  Choose sync mode:</span>
+  // Summary
+  ['print', `${G}  Summary${R}`],
+  ['print', '  ────────────────────────────────────'],
+  ['print', `  Apple ID:      ${B}user@icloud.com${R}`],
+  ['print', `  Directory:     ${B}/mnt/backup/Photos${R}`],
+  ['print', `  Drive check:   ${B}/mnt/backup${R}`],
+  ['print', '  ────────────────────────────────────'],
+  ['print', ''],
+  ['prompt', '  Save and test iCloud login? [Y/n] '],
+  ['type', 'y'],
+  ['enter'],
+  ['print', ''],
+  ['wait', 300],
+  ['print', `${G} ${R} Config saved to ~/.config/icloudpd-tui/config`],
+  ['print', ''],
+  ['print', `${G} ${R} Testing iCloud login...`],
+  ['print', `${D}  You may be asked for your password and a verification code.${R}`],
+  ['print', ''],
+  ['wait', 800],
+  ['print', '  Authenticating...'],
+  ['wait', 1200],
+  ['print', `  ${GR}Authentication completed successfully${R}`],
+  ['print', ''],
+  ['print', `${G} ${R} Setup complete!`],
+  ['wait', 1500],
 
-  <span class="bold">1)</span> Quick — check recent files only (fast, ~1 min)
-  <span class="bold">2)</span> Full  — check entire library (slow, may take hours)
+  // Clear and show menu
+  ['clear'],
+  ['wait', 300],
 
-  Mode [1]: <span class="bold">1</span>
-`,
+  // Menu dashboard
+  ['print', `${D}  ────────────────────────────────────${R}`],
+  ['print', `  ${D}Account:${R}  ${B}user@icloud.com${R}`],
+  ['print', `  ${D}Backup:${R}   ${B}27016${R} of ~${B}51391${R} iCloud files (52%)`],
+  ['print', `${Y}           ~24375 files not backed up (~202 GB needed)${R}`],
+  ['print', `  ${D}Disk:${R}     62.4 GB free of 915.8 GB`],
+  ['print', `${D}  ────────────────────────────────────${R}`],
+  ['print', ''],
+  ['print', `${D}  Use arrow keys ↑↓ to move, Enter to select, Esc to quit${R}`],
+  ['print', ''],
 
-  // 6: Sync in progress (animated)
-  () => `<span class="dim">  Quick sync — checking recent files (depth: 500)</span>
-<span class="dim">  Press Ctrl+C to stop safely (progress is kept).</span>
+  // Menu items with selection animation
+  ['print', `${W}▸ Sync                 Download new and missing files from iCloud${R}`],
+  ['print', `  Browse Library       ${D}View your backup organized by year and month${R}`],
+  ['print', `  Download by Date     ${D}Pick specific months to re-sync from iCloud${R}`],
+  ['print', `  Disk Status          ${D}Check backup drive space and storage estimates${R}`],
+  ['print', `  Settings             ${D}Change Apple ID, download location, or drive${R}`],
+  ['print', `  Log Out              ${D}Clear iCloud session and credentials${R}`],
+  ['print', `  Quit                 ${D}Exit the program${R}`],
+  ['wait', 2000],
 
+  // User selects Sync
+  ['clear'],
+  ['wait', 200],
+  ['print', `${G}  Sync iCloud Photos${R}`],
+  ['print', '  ────────────────────────────────────'],
+  ['print', ''],
+  ['print', `  ${D}Where should files be saved?${R}`],
+  ['print', `  ${D}Files will be organized as: <directory>/YYYY/MM/photo.jpg${R}`],
+  ['print', `  ${D}Select a directory, or type a custom path${R}`],
+  ['print', ''],
+  ['print', `${W}▸ /mnt/backup/Photos                  62G free  (current)${R}`],
+  ['print', `  /mnt/backup                           62G free`],
+  ['print', `  /home/user                            450G free`],
+  ['wait', 1500],
 
-    <span class="dim">✓ 2026/03/IMG_4399.HEIC</span>
-    <span class="dim">✓ 2026/03/IMG_4400.MOV</span>
-    <span class="dim">✓ 2026/03/IMG_4401.PNG</span>
-    <span class="green">+ 2026/03/IMG_4402.JPG</span>
-    <span class="dim">✓ 2026/03/IMG_4403.HEIC</span>
+  // Show sync info
+  ['clear'],
+  ['print', `  Backed up:    ${B}27016${R} of ~${B}51391${R} files (209.0 GB)`],
+  ['print', `  Missing:      ~${B}24375${R} files (~${B}202.3 GB${R})`],
+  ['print', `  Disk free:    ${B}62.4 GB${R}`],
+  ['print', ''],
+  ['print', `${Y}  ⚠ Not enough space for all missing files.${R}`],
+  ['print', `${Y}    Need ~139.9 GB more. Will download as much as possible.${R}`],
+  ['print', ''],
+  ['print', `${D}  Choose sync mode:${R}`],
+  ['print', ''],
+  ['print', `  ${B}1)${R} Quick — check recent files only (fast, ~1 min)`],
+  ['print', `  ${B}2)${R} Full  — check entire library (slow, may take hours)`],
+  ['print', ''],
+  ['prompt', '  Mode [1]: '],
+  ['type', '1'],
+  ['enter'],
+  ['print', ''],
+  ['print', `${D}  Quick sync — checking recent files (depth: 500)${R}`],
+  ['print', `${D}  Press Ctrl+C to stop safely (progress is kept).${R}`],
+  ['print', ''],
+  ['wait', 600],
 
-  <span class="accent" id="spinChar">⠹</span>  checked <span class="bold">814</span>  new <span class="green">36</span>  skipped <span class="dim">778</span>  <span class="dim">[45s]</span>
+  // Sync progress - simulate file scrolling
+  ['spinner_sync'],
+  ['wait', 500],
 
-`,
-
-  // 7: Sync complete
-  () => `
-<span class="accent">  Sync complete</span>
-  ────────────────────────────────────
-  Checked:      <span class="bold">814</span> files
-  Downloaded:   <span class="bold">36</span> new files
-  Skipped:      <span class="dim">778 already backed up</span>
-  ────────────────────────────────────
-
-<span class="dim">  Press Enter to go back to menu...</span>
-`,
+  // Completion
+  ['clear_lines', 7],
+  ['print', ''],
+  ['print', `${G}  Sync complete${R}`],
+  ['print', '  ────────────────────────────────────'],
+  ['print', `  Checked:      ${B}814${R} files`],
+  ['print', `  Downloaded:   ${B}36${R} new files`],
+  ['print', `  Skipped:      ${D}778 already backed up${R}`],
+  ['print', '  ────────────────────────────────────'],
+  ['print', ''],
+  ['print', `${D}  Press Enter to go back to menu...${R}`],
+  ['wait', 3000],
+  ['print', ''],
+  ['print', `${D}  ── Demo complete ──${R}`],
 ];
 
-let currentScreen = 0;
+let running = false;
+let paused = false;
+let stepIndex = 0;
+let cancelToken = { cancelled: false };
 
-let spinInterval = null;
+function scrollToBottom() {
+  const s = out.parentElement;
+  s.scrollTop = s.scrollHeight;
+}
 
-function render() {
-  if (spinInterval) { clearInterval(spinInterval); spinInterval = null; }
-  output.innerHTML = screens[currentScreen]();
+function addText(text) {
+  out.innerHTML += parse(text);
+  scrollToBottom();
+}
 
-  // Animate spinner on the sync progress screen
-  if (currentScreen === 6) {
-    const frames = '⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏';
-    let fi = 0;
-    const el = document.getElementById('spinChar');
-    if (el) {
-      spinInterval = setInterval(() => {
-        fi = (fi + 1) % frames.length;
-        el.textContent = frames[fi];
-      }, 80);
+function sleep(ms) {
+  return new Promise(r => {
+    const check = () => {
+      if (cancelToken.cancelled) return r();
+      if (paused) { setTimeout(check, 50); return; }
+      r();
+    };
+    setTimeout(check, ms);
+  });
+}
+
+async function typeText(text, delay = 45) {
+  for (const ch of text) {
+    if (cancelToken.cancelled) return;
+    while (paused) await sleep(50);
+    out.innerHTML += ch === '<' ? '&lt;' : ch;
+    scrollToBottom();
+    await sleep(delay);
+  }
+}
+
+async function sweepText(text) {
+  const dim = 'color:#64897a';
+  const bright = 'color:#e8f0ee;font-weight:700';
+  let el = document.createElement('span');
+  el.id = 'sweep';
+  el.style.cssText = dim;
+  out.appendChild(el);
+
+  for (let i = 0; i < text.length; i++) {
+    if (cancelToken.cancelled) { el.textContent = text; return; }
+    while (paused) await sleep(50);
+    // Show text up to i as dim, char i as bright
+    el.innerHTML = `<span style="${dim}">${text.substring(0, i)}</span><span style="${bright}">${text[i]}</span>`;
+    await sleep(40);
+  }
+  el.innerHTML = `<span style="${dim}">${text}</span>`;
+  // Flash twice
+  for (let f = 0; f < 2; f++) {
+    await sleep(200);
+    el.innerHTML = `<span style="${bright}">${text}</span>`;
+    await sleep(150);
+    el.innerHTML = `<span style="${dim}">${text}</span>`;
+  }
+  out.innerHTML += '\n';
+}
+
+async function spinnerSync() {
+  const frames = '⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏';
+  const allFiles = [
+    ['ok', '2026/03/IMG_4395.HEIC'], ['ok', '2026/03/IMG_4396.MOV'],
+    ['new','2026/03/IMG_4397.JPG'],  ['ok', '2026/03/IMG_4398.PNG'],
+    ['ok', '2026/03/IMG_4399.HEIC'], ['new','2026/03/IMG_4400.JPG'],
+    ['ok', '2026/03/IMG_4401.PNG'],  ['ok', '2026/03/IMG_4402.HEIC'],
+    ['new','2026/03/IMG_4403.PNG'],  ['ok', '2026/03/IMG_4404.HEIC'],
+    ['ok', '2026/03/IMG_4405.MOV'],  ['new','2026/03/IMG_4406.JPG'],
+    ['ok', '2026/02/IMG_4390.HEIC'], ['ok', '2026/02/IMG_4389.PNG'],
+    ['ok', '2026/02/IMG_4388.MOV'],  ['new','2026/02/IMG_4387.JPG'],
+    ['ok', '2026/02/IMG_4386.HEIC'], ['ok', '2026/02/IMG_4385.PNG'],
+  ];
+
+  let visible = ['', '', '', '', ''];
+  let checked = 0, downloaded = 0, skipped = 0;
+  let fi = 0;
+  let startTime = Date.now();
+
+  // Create display elements
+  const block = document.createElement('div');
+  block.id = 'syncblock';
+  for (let r = 0; r < 5; r++) {
+    const row = document.createElement('div');
+    row.id = `frow${r}`;
+    row.style.cssText = 'height:1.55em;';
+    block.appendChild(row);
+  }
+  const status = document.createElement('div');
+  status.id = 'syncstatus';
+  status.style.cssText = 'margin-top:0.3em;';
+  block.appendChild(status);
+  const pad = document.createElement('div');
+  pad.innerHTML = '&nbsp;';
+  block.appendChild(pad);
+  out.appendChild(block);
+
+  for (let i = 0; i < allFiles.length; i++) {
+    if (cancelToken.cancelled) return;
+    while (paused) await sleep(50);
+
+    const [st, name] = allFiles[i];
+    if (st === 'new') downloaded++; else skipped++;
+    checked++;
+    visible.shift();
+    visible.push(`${st}|${name}`);
+
+    for (let r = 0; r < 5; r++) {
+      const el = document.getElementById(`frow${r}`);
+      const entry = visible[r];
+      if (entry) {
+        const [s, n] = entry.split('|');
+        el.innerHTML = s === 'new'
+          ? `    <span style="color:#5fad72">+ ${n}</span>`
+          : `    <span style="color:#64897a">✓ ${n}</span>`;
+      } else {
+        el.innerHTML = '';
+      }
+    }
+
+    fi = (fi + 1) % frames.length;
+    const elapsed = Math.floor((Date.now() - startTime) / 1000);
+    const efmt = elapsed >= 60 ? `${Math.floor(elapsed/60)}m${elapsed%60}s` : `${elapsed}s`;
+    status.innerHTML = `  <span style="color:#5f8a72">${frames[fi]}</span>  checked <span style="color:#d0e8e0;font-weight:700">${checked}</span>  new <span style="color:#5fad72">${downloaded}</span>  skipped <span style="color:#64897a">${skipped}</span>  <span style="color:#64897a">[${efmt}]</span>`;
+
+    await sleep(250);
+  }
+
+  // Continue spinning for a bit
+  for (let t = 0; t < 20; t++) {
+    if (cancelToken.cancelled) return;
+    fi = (fi + 1) % frames.length;
+    const elapsed = Math.floor((Date.now() - startTime) / 1000);
+    const efmt = elapsed >= 60 ? `${Math.floor(elapsed/60)}m${elapsed%60}s` : `${elapsed}s`;
+    status.innerHTML = `  <span style="color:#5f8a72">${frames[fi]}</span>  checked <span style="color:#d0e8e0;font-weight:700">814</span>  new <span style="color:#5fad72">36</span>  skipped <span style="color:#64897a">778</span>  <span style="color:#64897a">[${efmt}]</span>`;
+    await sleep(80);
+  }
+}
+
+async function runScript() {
+  running = true;
+  document.getElementById('btnPlay').textContent = 'Pause';
+
+  for (; stepIndex < script.length; stepIndex++) {
+    if (cancelToken.cancelled) break;
+    while (paused) await sleep(50);
+
+    const [action, ...args] = script[stepIndex];
+
+    switch (action) {
+      case 'print':
+        addText(args[0] + '\n');
+        await sleep(30);
+        break;
+      case 'type':
+        await typeText(args[0]);
+        break;
+      case 'prompt':
+        addText(args[0]);
+        await sleep(200);
+        break;
+      case 'enter':
+        out.innerHTML += '\n';
+        scrollToBottom();
+        await sleep(100);
+        break;
+      case 'wait':
+        await sleep(args[0]);
+        break;
+      case 'clear':
+        out.innerHTML = '';
+        break;
+      case 'clear_lines':
+        // Remove last N lines visually
+        const block = document.getElementById('syncblock');
+        if (block) block.remove();
+        break;
+      case 'sweep':
+        await sweepText(args[0]);
+        break;
+      case 'spinner_sync':
+        await spinnerSync();
+        break;
     }
   }
 
-  // Update progress bar
-  document.querySelectorAll('.progress-step').forEach(el => {
-    const step = parseInt(el.dataset.step);
-    el.className = 'progress-step';
-    if (step < currentScreen) el.classList.add('done');
-    else if (step === currentScreen) el.classList.add('current');
-  });
-
-  // Update buttons
-  $('btnPrev').disabled = currentScreen === 0;
-  $('btnNext').disabled = currentScreen === screens.length - 1;
+  running = false;
+  document.getElementById('btnPlay').textContent = 'Play';
 }
 
-$('btnNext').addEventListener('click', () => {
-  if (currentScreen < screens.length - 1) {
-    currentScreen++;
-    render();
+// Controls
+document.getElementById('btnPlay').addEventListener('click', () => {
+  if (running) {
+    paused = !paused;
+    document.getElementById('btnPlay').textContent = paused ? 'Resume' : 'Pause';
+  } else {
+    paused = false;
+    cancelToken = { cancelled: false };
+    if (stepIndex >= script.length) { stepIndex = 0; out.innerHTML = ''; }
+    runScript();
   }
 });
 
-$('btnPrev').addEventListener('click', () => {
-  if (currentScreen > 0) {
-    currentScreen--;
-    render();
-  }
+document.getElementById('btnSkip').addEventListener('click', () => {
+  cancelToken.cancelled = true;
+  paused = false;
+  running = false;
+  out.innerHTML = '';
+  // Show menu instantly
+  const menuIdx = script.findIndex(s => s[0] === 'clear' && script.indexOf(s) > 20);
+  stepIndex = menuIdx >= 0 ? menuIdx : 0;
+  cancelToken = { cancelled: false };
+  // Render menu statically
+  const menuHTML = `<span style="color:#64897a">  ────────────────────────────────────</span>
+  <span style="color:#64897a">Account:</span>  <span style="color:#d0e8e0;font-weight:700">user@icloud.com</span>
+  <span style="color:#64897a">Backup:</span>   <span style="color:#d0e8e0;font-weight:700">27016</span> of ~<span style="color:#d0e8e0;font-weight:700">51391</span> iCloud files (52%)
+<span style="color:#c4a84e">           ~24375 files not backed up (~202 GB needed)</span>
+  <span style="color:#64897a">Disk:</span>     62.4 GB free of 915.8 GB
+<span style="color:#64897a">  ────────────────────────────────────</span>
+
+<span style="color:#64897a">  Use arrow keys ↑↓ to move, Enter to select, Esc to quit</span>
+
+<span style="color:#e8f0ee;font-weight:700">▸ Sync                 Download new and missing files from iCloud</span>
+  Browse Library       <span style="color:#64897a">View your backup organized by year and month</span>
+  Download by Date     <span style="color:#64897a">Pick specific months to re-sync from iCloud</span>
+  Disk Status          <span style="color:#64897a">Check backup drive space and storage estimates</span>
+  Settings             <span style="color:#64897a">Change Apple ID, download location, or drive</span>
+  Log Out              <span style="color:#64897a">Clear iCloud session and credentials</span>
+  Quit                 <span style="color:#64897a">Exit the program</span>
+`;
+  out.innerHTML = menuHTML;
+  stepIndex = script.length;
 });
 
-$('btnRestart').addEventListener('click', () => {
-  currentScreen = 0;
-  render();
+document.getElementById('btnRestart').addEventListener('click', () => {
+  cancelToken.cancelled = true;
+  paused = false;
+  running = false;
+  stepIndex = 0;
+  out.innerHTML = '';
+  setTimeout(() => {
+    cancelToken = { cancelled: false };
+    runScript();
+  }, 100);
 });
 
-// Keyboard navigation
-document.addEventListener('keydown', (e) => {
-  if (e.key === 'ArrowRight' || e.key === ' ') {
-    e.preventDefault();
-    $('btnNext').click();
-  } else if (e.key === 'ArrowLeft') {
-    e.preventDefault();
-    $('btnPrev').click();
-  }
+document.addEventListener('keydown', e => {
+  if (e.code === 'Space') { e.preventDefault(); document.getElementById('btnPlay').click(); }
 });
 
-render();
+// Auto-play on load
+runScript();
 </script>
 </body>
 </html>
