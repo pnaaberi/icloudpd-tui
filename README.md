@@ -94,6 +94,7 @@ Settings are loaded in this priority order:
 - icloudpd cannot efficiently list the full iCloud library contents. The browse view is built from local files (your backup) plus a quick recent-files check.
 - Date-filtered downloads still trigger a full library enumeration by icloudpd. This is an upstream limitation.
 - On macOS, CPU-based stall detection is not available (falls back to log file monitoring only).
+- **macOS + non-US keyboard**: if `@` doesn't work in Terminal, go to Terminal → Settings → Profiles → Keyboard and make sure **"Use Option as Meta key" is OFF**. You can also set your Apple ID via environment variable: `ICLOUD_USERNAME=you@icloud.com icloudpd-tui`
 
 ## License
 
