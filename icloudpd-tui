@@ -983,7 +983,7 @@ main_menu() {
         *"Browse Library"*)    action_browse_library ;;
         *"Download by Date"*)  action_download_by_date ;;
         *"Disk Status"*)       action_disk_status ;;
-        *"Settings"*)          run_setup; main_menu; return ;;
+        *"Settings"*)          action_settings ;;
         *"Log Out"*)           action_logout ;;
         *)                      info "Bye."; exit 0 ;;
     esac
@@ -1522,6 +1522,62 @@ action_sync() {
     fi
     echo
     read -rp "  $(dim "Press Enter to go back to menu...") " _
+    main_menu
+}
+
+action_settings() {
+    echo
+    accent "  Settings"; echo
+    echo "  ────────────────────────────────────"
+    printf "  Apple ID:      %s\n" "$(bold "$USERNAME")"
+    printf "  Directory:     %s\n" "$(bold "$TARGET_DIR")"
+    [[ -n "$MOUNT_POINT" ]] && printf "  Drive check:   %s\n" "$(bold "$MOUNT_POINT")"
+    echo "  ────────────────────────────────────"
+    echo
+
+    local choice
+    choice=$(printf '%s\n' \
+        "  Change Apple ID" \
+        "  Change download location" \
+        "  Re-run full setup" \
+        "  Back to menu" \
+    | fzf --ansi --no-multi --no-sort --reverse \
+        --color="$FZF_COLORS" \
+        --prompt="  " --pointer="▸" \
+        --header="$(dim "  Select an option, or Esc to go back")" \
+        --header-first \
+    || echo "Back")
+
+    case "$choice" in
+        *"Change Apple ID"*)
+            local default_user="$USERNAME"
+            while true; do
+                read -rp "  New Apple ID [$default_user]: " input
+                input="${input:-$default_user}"
+                if [[ "$input" == *@*.* ]]; then
+                    USERNAME="$input"
+                    save_config
+                    info "Apple ID updated. You may need to re-authenticate."
+                    break
+                else
+                    err "  That doesn't look like an email address."
+                fi
+            done
+            ;;
+        *"Change download location"*)
+            local new_dir
+            new_dir=$(pick_directory "$TARGET_DIR")
+            if [[ "$new_dir" != "$TARGET_DIR" ]]; then
+                TARGET_DIR="$new_dir"
+                save_config
+                info "Download location updated to $TARGET_DIR"
+            fi
+            ;;
+        *"Re-run full setup"*)
+            run_setup
+            ;;
+    esac
+    echo
     main_menu
 }
 
