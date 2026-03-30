@@ -294,18 +294,34 @@ run_setup() {
     echo
 
     local default_user="$USERNAME"
-    dim "  Tip: you can paste your email with Cmd+V or Ctrl+Shift+V"; echo
-    echo
     while true; do
-        read -erp "  Apple ID${default_user:+ [$default_user]}: " input
-        input="${input:-$default_user}"
+        local result rc=0
+        result=$(printf '%s\n' ${default_user:+"$default_user"} \
+            | fzf --no-multi --no-sort --reverse --print-query \
+                --color="$FZF_COLORS" \
+                --prompt="  Apple ID: " \
+                --header="$(dim "  Type your Apple ID email, then press Enter")" \
+                --header-first \
+            2>/dev/null) || rc=$?
+
+        if (( rc == 130 )); then
+            err "  Apple ID is required."
+            continue
+        fi
+
+        # --print-query: line 1 = typed query, line 2 = selected match
+        local query selected
+        query=$(echo "$result" | sed -n '1p')
+        selected=$(echo "$result" | sed -n '2p')
+        input="${selected:-$query}"
+
         if [[ "$input" == *@*.* ]]; then
             USERNAME="$input"
             break
         elif [[ -z "$input" ]]; then
             err "  Apple ID is required."
         else
-            err "  That doesn't look like an email. You can copy-paste it instead."
+            err "  That doesn't look like an email address."
         fi
     done
     echo
@@ -1582,7 +1598,18 @@ action_settings() {
         *"Change Apple ID"*)
             local default_user="$USERNAME"
             while true; do
-                read -rp "  New Apple ID [$default_user]: " input
+                local result rc=0
+                result=$(printf '%s\n' "$default_user" \
+                    | fzf --no-multi --no-sort --reverse --print-query \
+                        --color="$FZF_COLORS" \
+                        --prompt="  New Apple ID: " \
+                        --header="$(dim "  Type your Apple ID email, then press Enter")" \
+                        --header-first \
+                    2>/dev/null) || rc=$?
+                local query selected
+                query=$(echo "$result" | sed -n '1p')
+                selected=$(echo "$result" | sed -n '2p')
+                input="${selected:-$query}"
                 input="${input:-$default_user}"
                 if [[ "$input" == *@*.* ]]; then
                     USERNAME="$input"
