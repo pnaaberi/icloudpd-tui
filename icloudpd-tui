@@ -154,7 +154,7 @@ du_bytes() {
     if $IS_MACOS; then
         # macOS du doesn't have -b; use -k and multiply
         local kb
-        kb=$(du -sk "$1" 2>/dev/null | awk '{print $1}') || echo 0
+        kb=$(du -sk "$1" 2>/dev/null | awk '{print $1}') || kb=0
         echo $(( kb * 1024 ))
     else
         du -sb "$1" 2>/dev/null | awk '{print $1}'
@@ -227,24 +227,25 @@ load_config() {
 
 save_config() {
     mkdir -p "$CONFIG_DIR" && chmod 700 "$CONFIG_DIR"
+    # Use printf %q to safely escape values for shell sourcing
     cat > "$CONFIG_FILE" <<EOF
 # icloudpd-tui configuration
 # Generated on $(date -I)
 
 # Apple ID email address
-USERNAME="$USERNAME"
+USERNAME=$(printf '%q' "$USERNAME")
 
 # Local directory to download photos into
-TARGET_DIR="$TARGET_DIR"
+TARGET_DIR=$(printf '%q' "$TARGET_DIR")
 
 # Mount point to verify before downloading (parent of TARGET_DIR)
-MOUNT_POINT="$MOUNT_POINT"
+MOUNT_POINT=$(printf '%q' "$MOUNT_POINT")
 
 # Folder structure template (default: {:%Y/%m})
-FOLDER_STRUCTURE="$FOLDER_STRUCTURE"
+FOLDER_STRUCTURE=$(printf '%q' "$FOLDER_STRUCTURE")
 
 # Image size to download: original, medium, thumb
-DL_SIZE="$DL_SIZE"
+DL_SIZE=$(printf '%q' "$DL_SIZE")
 EOF
     chmod 600 "$CONFIG_FILE"  # restrict permissions — contains Apple ID
     info "Config saved to $CONFIG_FILE"
@@ -374,6 +375,7 @@ ensure_config() {
     if [[ -z "$USERNAME" || -z "$TARGET_DIR" ]]; then
         banner
         run_setup
+        exit 0  # setup already tested auth; restart to enter normal flow
     fi
 
     if [[ ! -d "$TARGET_DIR" ]]; then
@@ -399,7 +401,8 @@ check_mount() {
 
 # Convert bytes to human-readable format using pure bash integer arithmetic
 humanize() {
-    local bytes=$1
+    local bytes=${1:-0}
+    [[ "$bytes" =~ ^[0-9]+$ ]] || bytes=0
     if (( bytes >= 1099511627776 )); then
         local tb10=$(( bytes * 10 / 1099511627776 ))
         printf "%d.%d TB" "$(( tb10 / 10 ))" "$(( tb10 % 10 ))"
@@ -517,7 +520,7 @@ pick_directory() {
         if [[ -d "$clean" ]]; then
             local free
             free=$(df -h "$clean" 2>/dev/null | awk 'NR==2{print $4}') || free="?"
-            display+=("$(printf '%-50s %s free%s' "$clean" "$free" "$is_current")")
+            display+=("$(printf '%s\t%s free%s' "$clean" "$free" "$is_current")")
         fi
     done
 
@@ -534,7 +537,7 @@ pick_directory() {
     result=$(printf '%s\n' "${display[@]}" | fzf --ansi --no-multi --no-sort --reverse \
         --color="$FZF_COLORS" \
         --prompt="  path: " --pointer="▸" \
-        --print-query \
+        --print-query --delimiter='\t' --with-nth=1.. \
         --header="$header" \
         --header-first \
     2>/dev/null) || rc=$?
@@ -552,8 +555,8 @@ pick_directory() {
     # Prefer the matched selection; fall back to typed query
     local chosen
     if [[ -n "$selected" ]]; then
-        # Extract path (everything before the free space info)
-        chosen=$(echo "$selected" | awk '{print $1}')
+        # Extract path (everything before the tab separator)
+        chosen=$(echo "$selected" | cut -f1)
     elif [[ -n "$query" ]]; then
         # User typed a custom path
         chosen="${query/#\~/$HOME}"
@@ -575,8 +578,6 @@ pick_directory() {
     echo "$chosen"
 }
 
-# Get the last day of a given YYYY MM (handles leap years via date)
-# Estimate bytes needed for N missing files based on local backup average file size.
 # Estimate bytes needed for N missing files based on local backup average.
 estimate_missing_bytes() {
     local missing_count=$1
@@ -900,7 +901,7 @@ main_menu() {
     status_lines+="$(dim "  ────────────────────────────────────")"$'\n'
     status_lines+="  $(dim "Account:")  $(bold "$USERNAME")"$'\n'
 
-    if [[ -n "$library_total" && "$library_total" -gt 0 ]]; then
+    if [[ "$library_total" =~ ^[0-9]+$ ]] && (( library_total > 0 )); then
         local pct=$(( local_count * 100 / library_total ))
         local missing=$(( library_total - local_count ))
         status_lines+="  $(dim "Backup:")   $(bold "$local_count") of ~$(bold "$library_total") iCloud files (${pct}%)"$'\n'
@@ -1287,7 +1288,7 @@ action_sync() {
     echo
 
     local missing=0
-    if [[ -n "$library_total" && "$library_total" -gt 0 ]]; then
+    if [[ "$library_total" =~ ^[0-9]+$ ]] && (( library_total > 0 )); then
         missing=$(( library_total - local_count ))
         local local_bytes
         local_bytes=$(du_bytes "$TARGET_DIR") || local_bytes=0
