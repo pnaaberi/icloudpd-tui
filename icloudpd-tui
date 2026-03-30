@@ -256,6 +256,8 @@ run_setup() {
     accent "  Welcome! Let's set up your iCloud photo backup."; echo
     dim "  This takes about a minute. Your settings stay on this computer."; echo
     echo
+    dim "  Steps: 1) Apple ID  →  2) Download location  →  3) Drive check  →  Login test"; echo
+    echo
 
     # ── Step 1: Apple ID ──────────────────────────────────────────────────────
     local input
