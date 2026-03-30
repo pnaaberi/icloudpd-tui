@@ -1250,25 +1250,97 @@ action_full_sync() {
     esac
 
     echo
-    # Use --until-found with the library size to ensure full coverage.
-    # This scans from newest to oldest, downloading missing files,
-    # and stops only after N consecutive duplicates — effectively a full sync.
     local scan_depth="${library_total:-$local_count}"
     (( scan_depth < 1000 )) && scan_depth=1000
 
-    info "Syncing entire library (scan depth: $scan_depth)..."
-    dim "  Saving to: $TARGET_DIR"; echo
-    echo
-
+    # Run icloudpd in background and parse its output for a live status line
     local sync_log="$CACHE_DIR/sync.log"
-    run_with_retry $ICLOUDPD \
+    > "$sync_log"
+
+    $ICLOUDPD \
         --username "$USERNAME" \
         --directory "$TARGET_DIR" \
         --folder-structure "$FOLDER_STRUCTURE" \
         --size "$DL_SIZE" \
-        --until-found "$scan_depth" 2>&1 | tee "$sync_log"
+        --until-found "$scan_depth" >> "$sync_log" 2>&1 &
+    local sync_pid=$!
+
+    local tty=/dev/tty
+    local checked=0 downloaded=0 skipped=0 last_file=""
+    local frames='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
+    local fi=0 last_line_count=0
+    local start_ts
+    start_ts=$(date +%s)
+
+    tput civis > "$tty" 2>/dev/null || true
+
+    while kill -0 "$sync_pid" 2>/dev/null; do
+        local total_lines
+        total_lines=$(wc -l < "$sync_log" 2>/dev/null) || total_lines=0
+
+        if (( total_lines > last_line_count )); then
+            # Parse new lines for counters
+            local new_lines
+            new_lines=$(sed -n "$(( last_line_count + 1 )),${total_lines}p" "$sync_log")
+            last_line_count=$total_lines
+
+            local dl_new skip_new
+            dl_new=$(echo "$new_lines" | grep -c "Downloaded" 2>/dev/null) || dl_new=0
+            skip_new=$(echo "$new_lines" | grep -c "already exists\|deduplicated" 2>/dev/null) || skip_new=0
+            downloaded=$(( downloaded + dl_new ))
+            skipped=$(( skipped + skip_new ))
+            checked=$(( downloaded + skipped ))
+
+            # Get last meaningful filename
+            local lf
+            lf=$(echo "$new_lines" | grep -oP '(?<=Photos/)\S+' | tail -1) || lf=""
+            [[ -n "$lf" ]] && last_file="$lf"
+        fi
+
+        local now_ts elapsed_s elapsed_fmt
+        now_ts=$(date +%s)
+        elapsed_s=$(( now_ts - start_ts ))
+        if (( elapsed_s >= 60 )); then
+            elapsed_fmt="$(( elapsed_s / 60 ))m$(( elapsed_s % 60 ))s"
+        else
+            elapsed_fmt="${elapsed_s}s"
+        fi
+
+        # Show single status line: spinner + counters + last file
+        local display_file="${last_file:0:40}"
+        printf '\r\033[K  \033[38;2;95;138;114m%s\033[0m  checked \033[1m%d\033[0m  new \033[1;32m%d\033[0m  skipped \033[2m%d\033[0m  \033[2m[%s] %s\033[0m' \
+            "${frames:fi%${#frames}:1}" "$checked" "$downloaded" "$skipped" "$elapsed_fmt" "$display_file" > "$tty"
+        fi=$(( fi + 1 ))
+        sleep 0.1
+    done
+
+    # Final count from remaining log lines
+    local total_lines
+    total_lines=$(wc -l < "$sync_log" 2>/dev/null) || total_lines=0
+    if (( total_lines > last_line_count )); then
+        local new_lines
+        new_lines=$(sed -n "$(( last_line_count + 1 )),${total_lines}p" "$sync_log")
+        local dl_new skip_new
+        dl_new=$(echo "$new_lines" | grep -c "Downloaded" 2>/dev/null) || dl_new=0
+        skip_new=$(echo "$new_lines" | grep -c "already exists\|deduplicated" 2>/dev/null) || skip_new=0
+        downloaded=$(( downloaded + dl_new ))
+        skipped=$(( skipped + skip_new ))
+        checked=$(( downloaded + skipped ))
+    fi
+
+    wait "$sync_pid" 2>/dev/null || true
+    printf '\r\033[K' > "$tty"
+    tput cnorm > "$tty" 2>/dev/null || true
+
     capture_library_total "$sync_log"
-    info "Full sync complete!"
+
+    echo
+    accent "  Sync complete"; echo
+    echo "  ────────────────────────────────────"
+    printf "  Checked:      %s files\n" "$(bold "$checked")"
+    printf "  Downloaded:   %s new files\n" "$(bold "$downloaded")"
+    printf "  Skipped:      %s already backed up\n" "$(dim "$skipped")"
+    echo "  ────────────────────────────────────"
 
     echo
     read -rp "  $(dim "Press Enter to go back to menu...") " _
