@@ -1019,17 +1019,21 @@ download_selection() {
 }
 
 run_with_retry() {
-    local max_retries=5
-    local retry_delay=30
+    local max_retries=3
+    local retry_delay=60  # start at 60s, doubles each attempt (exponential backoff)
     local attempt=0
     while ! "$@"; do
         attempt=$((attempt + 1))
         if (( attempt >= max_retries )); then
-            err "Failed after $max_retries attempts"
+            err "Failed after $max_retries attempts."
+            err "If this keeps happening, Apple may be rate-limiting your account."
+            err "Wait 15-30 minutes before trying again."
             return 1
         fi
         info "Interrupted, retrying in ${retry_delay}s... (attempt $attempt/$max_retries)"
+        dim "  If iCloud keeps rejecting requests, wait a while before retrying."; echo
         sleep "$retry_delay"
+        retry_delay=$(( retry_delay * 2 ))  # exponential backoff
     done
 }
 
@@ -1150,6 +1154,8 @@ action_full_rescan() {
     dim "  not yet downloaded. For large libraries (20,000+ files),"; echo
     dim "  this can take 30 minutes or more."; echo
     echo
+    dim "  Avoid running this repeatedly — Apple may rate-limit your"; echo
+    dim "  account if you make too many requests in a short time."; echo
     dim "  Press Ctrl+C to cancel if it takes too long."; echo
     echo
     read -rp "  Start full scan? [y/N] " confirm
