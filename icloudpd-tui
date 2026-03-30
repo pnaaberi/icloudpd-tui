@@ -1266,20 +1266,25 @@ action_full_sync() {
     local sync_pid=$!
 
     local tty=/dev/tty
-    local checked=0 downloaded=0 skipped=0 last_file=""
+    local checked=0 downloaded=0 skipped=0
     local frames='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
     local fi=0 last_line_count=0
     local start_ts
     start_ts=$(date +%s)
+    local -a recent_files=("" "" "" "" "")  # last 5 files
+    local display_rows=7  # 5 file rows + 1 status + 1 blank
+    local first_draw=true
 
     tput civis > "$tty" 2>/dev/null || true
+
+    # Print initial blank rows so cursor-up works from the start
+    for ((r=0; r<display_rows; r++)); do printf '\n' > "$tty"; done
 
     while kill -0 "$sync_pid" 2>/dev/null; do
         local total_lines
         total_lines=$(wc -l < "$sync_log" 2>/dev/null) || total_lines=0
 
         if (( total_lines > last_line_count )); then
-            # Parse new lines for counters
             local new_lines
             new_lines=$(sed -n "$(( last_line_count + 1 )),${total_lines}p" "$sync_log")
             last_line_count=$total_lines
@@ -1291,10 +1296,24 @@ action_full_sync() {
             skipped=$(( skipped + skip_new ))
             checked=$(( downloaded + skipped ))
 
-            # Get last meaningful filename
-            local lf
-            lf=$(echo "$new_lines" | grep -oP '(?<=Photos/)\S+' | tail -1) || lf=""
-            [[ -n "$lf" ]] && last_file="$lf"
+            # Extract recent filenames and their status
+            while IFS= read -r logline; do
+                local fname="" status=""
+                if [[ "$logline" == *"Downloaded"* ]]; then
+                    fname=$(echo "$logline" | grep -oP '(?<=Photos/)\S+' || true)
+                    status="new"
+                elif [[ "$logline" == *"already exists"* ]]; then
+                    fname=$(echo "$logline" | grep -oP '(?<=Photos/)\S+' || true)
+                    status="ok"
+                elif [[ "$logline" == *"deduplicated"* ]]; then
+                    fname=$(echo "$logline" | grep -oP '(?<=Photos/)\S+' || true)
+                    status="ok"
+                fi
+                if [[ -n "$fname" ]]; then
+                    # Shift array and add new entry
+                    recent_files=("${recent_files[@]:1}" "${status}|${fname}")
+                fi
+            done <<< "$new_lines"
         fi
 
         local now_ts elapsed_s elapsed_fmt
@@ -1306,10 +1325,33 @@ action_full_sync() {
             elapsed_fmt="${elapsed_s}s"
         fi
 
-        # Show single status line: spinner + counters + last file
-        local display_file="${last_file:0:40}"
-        printf '\r\033[K  \033[38;2;95;138;114m%s\033[0m  checked \033[1m%d\033[0m  new \033[1;32m%d\033[0m  skipped \033[2m%d\033[0m  \033[2m[%s] %s\033[0m' \
-            "${frames:fi%${#frames}:1}" "$checked" "$downloaded" "$skipped" "$elapsed_fmt" "$display_file" > "$tty"
+        # Move cursor up to redraw the block
+        printf '\033[%dA' "$display_rows" > "$tty"
+
+        # Draw 5 recent file rows
+        for ((r=0; r<5; r++)); do
+            local entry="${recent_files[$r]}"
+            if [[ -n "$entry" ]]; then
+                local st="${entry%%|*}"
+                local fn="${entry#*|}"
+                fn="${fn:0:65}"
+                if [[ "$st" == "new" ]]; then
+                    printf '\033[K    \033[32m+\033[0m %s\n' "$fn" > "$tty"
+                else
+                    printf '\033[K    \033[2m✓ %s\033[0m\n' "$fn" > "$tty"
+                fi
+            else
+                printf '\033[K\n' > "$tty"
+            fi
+        done
+
+        # Status line
+        printf '\033[K  \033[38;2;95;138;114m%s\033[0m  checked \033[1m%d\033[0m  new \033[1;32m%d\033[0m  skipped \033[2m%d\033[0m  \033[2m[%s]\033[0m\n' \
+            "${frames:fi%${#frames}:1}" "$checked" "$downloaded" "$skipped" "$elapsed_fmt" > "$tty"
+
+        # Blank padding row
+        printf '\033[K\n' > "$tty"
+
         fi=$(( fi + 1 ))
         sleep 0.1
     done
@@ -1329,7 +1371,12 @@ action_full_sync() {
     fi
 
     wait "$sync_pid" 2>/dev/null || true
-    printf '\r\033[K' > "$tty"
+
+    # Clear the display block
+    printf '\033[%dA' "$display_rows" > "$tty"
+    for ((r=0; r<display_rows; r++)); do printf '\033[K\n' > "$tty"; done
+    printf '\033[%dA' "$display_rows" > "$tty"
+
     tput cnorm > "$tty" 2>/dev/null || true
 
     capture_library_total "$sync_log"
