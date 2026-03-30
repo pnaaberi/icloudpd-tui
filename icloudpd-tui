@@ -75,6 +75,7 @@ BG_PID=""
 
 cleanup() {
     [[ -n "$BG_PID" ]] && kill "$BG_PID" 2>/dev/null && wait "$BG_PID" 2>/dev/null
+    [[ -t 0 ]] && stty echo icanon 2>/dev/null || true
     tput cnorm 2>/dev/null
     printf '\033[K'
     echo
@@ -1384,7 +1385,13 @@ action_sync() {
     fi
 
     echo
-    dim "  Press Ctrl+C to stop safely (progress is kept)."; echo
+    read -rp "  Start download? [Y/n] " confirm
+    case "$confirm" in
+        [nN]*) info "Cancelled."; main_menu; return ;;
+    esac
+
+    echo
+    dim "  Downloading... press Q or Ctrl+C to stop safely (progress is kept)."; echo
     echo
 
     # Run icloudpd in background with live status display
@@ -1413,7 +1420,18 @@ action_sync() {
     tput civis > "$tty" 2>/dev/null || true
     for ((r=0; r<display_rows; r++)); do printf '\n' > "$tty"; done
 
+    # Enable non-blocking key reading for Q to quit
+    if [[ -t 0 ]]; then stty -echo -icanon time 0 min 0 2>/dev/null || true; fi
+
     while kill -0 "$sync_pid" 2>/dev/null; do
+        # Check for Q key press
+        local keypress=""
+        read -rsn1 -t 0.01 keypress 2>/dev/null || true
+        if [[ "$keypress" == "q" || "$keypress" == "Q" ]]; then
+            kill "$sync_pid" 2>/dev/null || true
+            wait "$sync_pid" 2>/dev/null || true; BG_PID=""
+            break
+        fi
         local total_lines
         total_lines=$(wc -l < "$sync_log" 2>/dev/null) || total_lines=0
 
@@ -1509,6 +1527,8 @@ action_sync() {
     printf '\033[%dA' "$display_rows" > "$tty"
 
     tput cnorm > "$tty" 2>/dev/null || true
+    # Restore terminal input mode
+    if [[ -t 0 ]]; then stty echo icanon 2>/dev/null || true; fi
     capture_library_total "$sync_log"
 
     echo
