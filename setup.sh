@@ -7,6 +7,15 @@
 #   curl -fsSL https://raw.githubusercontent.com/pnaaberi/icloudpd-tui/main/setup.sh | bash
 # ─────────────────────────────────────────────────────────────────────────────
 
+# When piped from curl, re-exec from a temp file so subcommands
+# don't consume stdin (which is the script itself).
+if [[ ! -t 0 && "${_SETUP_REEXEC:-}" != "1" ]]; then
+    tmp=$(mktemp /tmp/icloudpd-tui-setup.XXXXXX)
+    cat > "$tmp"
+    chmod +x "$tmp"
+    _SETUP_REEXEC=1 exec bash "$tmp" "$@"
+fi
+
 set -euo pipefail
 
 G='\033[38;2;95;138;114m'
@@ -264,7 +273,12 @@ printf "${D}  Installed to: %s${R}\n" "$INSTALL_DIR"
 printf "${D}  Binary:       %s/icloudpd-tui${R}\n" "$BIN_DIR"
 echo
 
-read -rp "  Launch now? [Y/n] " launch
+if [[ -t 0 ]]; then
+    read -rp "  Launch now? [Y/n] " launch
+else
+    # Piped from curl — can't read stdin, ask user to run manually
+    read -rp "  Launch now? [Y/n] " launch < /dev/tty || launch="n"
+fi
 case "$launch" in
     [nN]*) ;;
     *) exec icloudpd-tui ;;
