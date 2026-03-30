@@ -267,11 +267,18 @@ printf "${G}  ╭─────────────────────
 printf "${G}  │${R}${W}  Installation complete!          ${R}${G}│${R}\n"
 printf "${G}  ╰─────────────────────────────────╯${R}\n"
 echo
-printf "  Run:  ${B}icloudpd-tui${R}\n"
-echo
 printf "${D}  Installed to: %s${R}\n" "$INSTALL_DIR"
 printf "${D}  Binary:       %s/icloudpd-tui${R}\n" "$BIN_DIR"
 echo
-
-printf "  To start, run:\n\n"
-printf "    ${B}icloudpd-tui${R}\n\n"
+printf "  ${B}What's next:${R}\n"
+echo
+printf "  1. Open a ${B}new terminal window${R}\n"
+printf "     ${D}(needed so your PATH update takes effect)${R}\n"
+echo
+printf "  2. Run:\n"
+echo
+printf "     ${G}\$ ${B}icloudpd-tui${R}\n"
+echo
+printf "  ${D}The setup wizard will guide you through connecting${R}\n"
+printf "  ${D}your Apple ID and choosing where to save photos.${R}\n"
+echo
