@@ -1516,10 +1516,8 @@ action_logout() {
     read -rp "  Are you sure? [y/N] " confirm
     case "$confirm" in
         [yY]*)
-            # Clear icloudpd session cookies
-            local cookie_name
-            cookie_name=$(echo "$USERNAME" | tr -d '@.' )
-            rm -f "$HOME/.pyicloud/${cookie_name}" "$HOME/.pyicloud/${cookie_name}.session" 2>/dev/null
+            # Clear all icloudpd session cookies
+            rm -rf "$HOME/.pyicloud" 2>/dev/null
             info "Cleared iCloud session"
 
             # Clear config and cache
