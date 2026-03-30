@@ -273,8 +273,5 @@ printf "${D}  Installed to: %s${R}\n" "$INSTALL_DIR"
 printf "${D}  Binary:       %s/icloudpd-tui${R}\n" "$BIN_DIR"
 echo
 
-read -rp "  Launch now? [Y/n] " launch < /dev/tty || launch="n"
-case "$launch" in
-    [nN]*) ;;
-    *) exec icloudpd-tui < /dev/tty ;;
-esac
+printf "  To start, run:\n\n"
+printf "    ${B}icloudpd-tui${R}\n\n"
