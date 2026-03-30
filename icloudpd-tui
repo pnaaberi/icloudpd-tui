@@ -256,17 +256,26 @@ run_setup() {
     accent "  Welcome! Let's set up your iCloud photo backup."; echo
     dim "  This takes about a minute. Your settings stay on this computer."; echo
     echo
-    # Animate the steps roadmap — white sweep across, fades to dim
+    # Animate the steps roadmap — white sweep across, fades to dim, flash twice
     local full_line="1) Apple ID  →  2) Download location  →  3) Drive check  →  Login test"
     local d=$'\033[38;2;100;130;115m' w=$'\033[1;37m' r=$'\033[0m'
     local len=${#full_line}
+
+    # Sweep: ~4 seconds
     local i=0
     while (( i < len )); do
         printf '\r  %s%s%s%s%s%s' "$d" "${full_line:0:i}" "$w" "${full_line:i:1}" "$r" "$d"
         i=$((i + 1))
-        sleep 0.03
+        sleep 0.05
     done
-    printf '\r  %s%s%s' "$d" "$full_line" "$r"
+
+    # Flash twice
+    for f in 1 2; do
+        sleep 0.2
+        printf '\r  %s%s%s' "$w" "$full_line" "$r"
+        sleep 0.15
+        printf '\r  %s%s%s' "$d" "$full_line" "$r"
+    done
     echo
     echo
 
