@@ -689,7 +689,8 @@ main_menu() {
         "  Browse & Download    View library by year/month and pick what to sync" \
         "  Quick Sync           Grab all new files quickly" \
         "  Disk Status          Check backup drive space" \
-        "  Rescan Library       Check last $SCAN_RECENT iCloud files for anything new" \
+        "  Quick Rescan         Check last $SCAN_RECENT iCloud files for anything new" \
+        "  Full Rescan          Scan entire iCloud library (slow, may take 30+ min)" \
         "  Settings             Change download location or account" \
         "  Quit                 Exit the program" \
     | fzf --ansi --no-multi --no-sort --reverse \
@@ -703,7 +704,8 @@ main_menu() {
         *"Browse & Download"*) action_browse ;;
         *"Quick Sync"*)        action_quick_sync ;;
         *"Disk Status"*)       action_disk_status ;;
-        *"Rescan Library"*)    action_rescan ;;
+        *"Quick Rescan"*)      action_rescan ;;
+        *"Full Rescan"*)       action_full_rescan ;;
         *"Settings"*)          run_setup; main_menu; return ;;
         *)                      info "Bye."; exit 0 ;;
     esac
@@ -1104,9 +1106,56 @@ action_disk_status() {
 action_rescan() {
     rm -f "$CACHE_FILE"
     dim "  Checking the $SCAN_RECENT most recent files in your iCloud library."; echo
-    dim "  To check more, set SCAN_RECENT=2000 before running the script."; echo
     echo
     scan_library || true
+    echo
+    read -rp "  $(dim "Press Enter to go back to menu...") " _
+    main_menu
+}
+
+action_full_rescan() {
+    echo
+    accent "  Full Library Rescan"; echo
+    echo "  ────────────────────────────────────"
+    dim "  This scans your ENTIRE iCloud library to find all files"; echo
+    dim "  not yet downloaded. For large libraries (20,000+ files),"; echo
+    dim "  this can take 30 minutes or more."; echo
+    echo
+    dim "  Press Ctrl+C to cancel if it takes too long."; echo
+    echo
+    read -rp "  Start full scan? [y/N] " confirm
+    case "$confirm" in
+        [yY]*) ;;
+        *) info "Cancelled."; main_menu; return ;;
+    esac
+
+    rm -f "$CACHE_FILE"
+    ensure_cache
+    > "$CACHE_FILE"
+    local log_file="$CACHE_DIR/scan.log"
+    > "$log_file"
+
+    echo
+    $ICLOUDPD \
+        --only-print-filenames \
+        --log-level info \
+        --username "$USERNAME" \
+        --directory "$TARGET_DIR" \
+        --folder-structure "$FOLDER_STRUCTURE" \
+        --size "$DL_SIZE" \
+        >> "$CACHE_FILE" 2>>"$log_file" &
+    local pid=$!
+
+    local count
+    # Long timeouts: 10 min stall, 60 min total
+    if count=$(spin_while "$pid" "$CACHE_FILE" "Full scan in progress..." "$log_file" 3600); then
+        if (( count > 0 )); then
+            info "Found $count files not yet downloaded"
+        else
+            info "Everything is fully synced"
+        fi
+    fi
+
     echo
     read -rp "  $(dim "Press Enter to go back to menu...") " _
     main_menu
