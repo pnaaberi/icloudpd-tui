@@ -18,7 +18,7 @@ Interactive TUI wrapper for [iCloud Photos Downloader](https://github.com/icloud
 - [icloudpd](https://github.com/icloud-photos-downloader/icloud_photos_downloader) (iCloud Photos Downloader)
 - [fzf](https://github.com/junegunn/fzf) (fuzzy finder)
 - [gawk](https://www.gnu.org/software/gawk/) (GNU awk)
-- Linux or macOS
+- Linux (macOS support in progress)
 
 ## Installation
 
