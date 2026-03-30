@@ -90,6 +90,27 @@ Requires bash 4+ (macOS ships 3.2). The script auto-detects and uses brew's bash
 
 </details>
 
+<details>
+<summary>Install with AI assistant (Claude, ChatGPT, Copilot, etc.)</summary>
+
+Paste this prompt to your AI coding assistant:
+
+```
+Install icloudpd-tui on my system. It's an interactive TUI for backing up
+iCloud photos. The repo is at https://github.com/pnaaberi/icloudpd-tui
+
+Steps:
+1. Detect my OS and package manager
+2. Install dependencies: fzf, gawk, pipx, git
+3. Install icloudpd via pipx: pipx install icloudpd
+4. Clone the repo: git clone https://github.com/pnaaberi/icloudpd-tui.git
+5. Make it executable and add to PATH
+6. If macOS, also install bash 4+ via brew
+7. Run icloudpd-tui to verify it works
+```
+
+</details>
+
 ## Usage
 
 ```bash
