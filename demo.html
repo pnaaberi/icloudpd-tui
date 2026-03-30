@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>icloudpd-tui — Interactive Demo</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #080e0c;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    font-family: 'JetBrains Mono', monospace;
+    padding: 2rem;
+  }
+
+  h1 {
+    color: #8fbcaa;
+    font-size: 1.2rem;
+    margin-bottom: 0.5rem;
+    font-weight: 400;
+  }
+
+  .subtitle {
+    color: #5f8a72;
+    font-size: 0.8rem;
+    margin-bottom: 1.5rem;
+  }
+
+  .terminal {
+    background: #0d1512;
+    border: 1px solid #1e3a2e;
+    border-radius: 12px;
+    width: 100%;
+    max-width: 780px;
+    min-height: 520px;
+    overflow: hidden;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.5), 0 0 40px rgba(95,138,114,0.05);
+  }
+
+  .titlebar {
+    background: #0a100e;
+    padding: 10px 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    border-bottom: 1px solid #1e3a2e;
+  }
+
+  .dot { width: 12px; height: 12px; border-radius: 50%; }
+  .dot.red { background: #ff5f56; }
+  .dot.yellow { background: #ffbd2e; }
+  .dot.green { background: #27c93f; }
+
+  .titlebar-text {
+    color: #5f8a72;
+    font-size: 0.7rem;
+    margin-left: auto;
+  }
+
+  .screen {
+    padding: 20px 24px;
+    min-height: 480px;
+    position: relative;
+  }
+
+  .output {
+    color: #b0c4c0;
+    font-size: 0.82rem;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  .dim { color: #64897a; }
+  .accent { color: #5f8a72; }
+  .bold { font-weight: 700; color: #d0e8e0; }
+  .green { color: #5f8a72; }
+  .white { color: #e8f0ee; font-weight: 700; }
+  .yellow { color: #c4a84e; }
+  .red { color: #c44e4e; }
+
+  .box { color: #5f8a72; }
+  .box-text { font-weight: 700; color: #d0e8e0; }
+
+  .cursor {
+    display: inline-block;
+    width: 8px;
+    height: 16px;
+    background: #5f8a72;
+    animation: blink 1s step-end infinite;
+    vertical-align: text-bottom;
+  }
+
+  @keyframes blink {
+    50% { opacity: 0; }
+  }
+
+  .menu-item {
+    padding: 2px 0;
+    display: block;
+  }
+
+  .menu-item.selected {
+    background: #162420;
+    color: #d0e8e0;
+  }
+
+  .menu-item .pointer {
+    color: #5f8a72;
+    margin-right: 4px;
+  }
+
+  .controls {
+    display: flex;
+    gap: 12px;
+    margin-top: 1.5rem;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .btn {
+    background: #162420;
+    color: #8fbcaa;
+    border: 1px solid #2a4a3a;
+    padding: 8px 20px;
+    border-radius: 6px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.8rem;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .btn:hover {
+    background: #1e3a2e;
+    border-color: #5f8a72;
+    color: #d0e8e0;
+  }
+
+  .btn.active {
+    background: #5f8a72;
+    color: #0d1512;
+    border-color: #5f8a72;
+  }
+
+  .btn:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+  }
+
+  .progress-bar {
+    width: 100%;
+    max-width: 780px;
+    display: flex;
+    gap: 4px;
+    margin-top: 1rem;
+  }
+
+  .progress-step {
+    flex: 1;
+    height: 3px;
+    background: #1e3a2e;
+    border-radius: 2px;
+    transition: background 0.3s;
+  }
+
+  .progress-step.done { background: #5f8a72; }
+  .progress-step.current { background: #8fbcaa; }
+
+  .footer {
+    color: #3d5c4a;
+    font-size: 0.7rem;
+    margin-top: 1.5rem;
+    text-align: center;
+  }
+
+  .footer a { color: #5f8a72; text-decoration: none; }
+  .footer a:hover { text-decoration: underline; }
+
+  .spinner {
+    display: inline-block;
+    animation: spin 0.8s steps(10) infinite;
+  }
+
+  @keyframes spin {
+    0% { content: '⠋'; }
+    10% { content: '⠙'; }
+    20% { content: '⠹'; }
+    30% { content: '⠸'; }
+    40% { content: '⠼'; }
+    50% { content: '⠴'; }
+    60% { content: '⠦'; }
+    70% { content: '⠧'; }
+    80% { content: '⠇'; }
+    90% { content: '⠏'; }
+  }
+</style>
+</head>
+<body>
+
+<h1>icloudpd-tui</h1>
+<p class="subtitle">Interactive TUI for iCloud Photos Downloader</p>
+
+<div class="terminal">
+  <div class="titlebar">
+    <div class="dot red"></div>
+    <div class="dot yellow"></div>
+    <div class="dot green"></div>
+    <span class="titlebar-text">~/icloudpd-tui</span>
+  </div>
+  <div class="screen">
+    <div class="output" id="output"></div>
+  </div>
+</div>
+
+<div class="progress-bar" id="progress">
+  <div class="progress-step" data-step="0"></div>
+  <div class="progress-step" data-step="1"></div>
+  <div class="progress-step" data-step="2"></div>
+  <div class="progress-step" data-step="3"></div>
+  <div class="progress-step" data-step="4"></div>
+  <div class="progress-step" data-step="5"></div>
+  <div class="progress-step" data-step="6"></div>
+</div>
+
+<div class="controls">
+  <button class="btn" id="btnPrev" disabled>&larr; Back</button>
+  <button class="btn active" id="btnNext">Next &rarr;</button>
+  <button class="btn" id="btnRestart">Restart</button>
+</div>
+
+<p class="footer">
+  <a href="https://github.com/pnaaberi/icloudpd-tui">GitHub</a> &middot;
+  Wraps <a href="https://github.com/icloud-photos-downloader/icloud_photos_downloader">icloudpd</a> &middot;
+  MIT License
+</p>
+
+<script>
+const $ = id => document.getElementById(id);
+const output = $('output');
+
+const screens = [
+  // 0: Banner + welcome
+  () => `<span class="box">  ╭─────────────────────╮
+  │</span><span class="box-text">  iCloud Photos TUI  </span><span class="box">│
+  ╰─────────────────────╯</span>
+<span class="dim">  Press Ctrl+C at any time to quit safely.</span>
+
+
+<span class="accent">  Welcome! Let's set up your iCloud photo backup.</span>
+<span class="dim">  This takes about a minute. Your settings stay on this computer.</span>
+
+<span class="dim">  Steps: 1) Apple ID  →  2) Download location  →  3) Login test</span>
+`,
+
+  // 1: Step 1 — Apple ID
+  () => `<span class="accent">  Step 1 of 3 — Apple ID</span>
+  ────────────────────────────────────
+<span class="dim">  Enter the email address for your iCloud account.</span>
+
+  Apple ID: <span class="bold">user@icloud.com</span>
+`,
+
+  // 2: Step 2 — Download location
+  () => `<span class="accent">  Step 2 of 3 — Download location</span>
+  ────────────────────────────────────
+<span class="dim">  Where should photos be saved? This can be an external
+  drive or any folder on your computer.</span>
+
+<span class="dim">  Press Enter to use the default, or type a new path (Tab to autocomplete)</span>
+  Directory [~/icloud-photos]: <span class="bold">/run/media/user/BACKUP/Photos</span>
+
+<span class="accent">  Step 3 of 3 — External drive detected</span>
+  ────────────────────────────────────
+  Your photos are saved on: <span class="bold">/run/media/user/BACKUP</span>
+<span class="dim">  We can check this drive is plugged in before each download,
+  so you don't get errors if it's disconnected.</span>
+
+  Enable this check? [Y/n] <span class="bold">y</span>
+`,
+
+  // 3: Summary + auth
+  () => `<span class="accent">  Summary</span>
+  ────────────────────────────────────
+  Apple ID:      <span class="bold">user@icloud.com</span>
+  Directory:     <span class="bold">/run/media/user/BACKUP/Photos</span>
+  Drive check:   <span class="bold">/run/media/user/BACKUP</span>
+  ────────────────────────────────────
+
+  Save and test iCloud login? [Y/n] <span class="bold">y</span>
+
+<span class="accent"> </span> Config saved to ~/.config/icloudpd-tui/config
+
+<span class="accent"> </span> Testing iCloud login...
+<span class="dim">  You may be asked for your password and a verification code.</span>
+
+  Authenticating... <span class="green">Authentication completed successfully</span>
+
+<span class="accent"> </span> Setup complete!
+`,
+
+  // 4: Main menu
+  () => {
+    const items = [
+      { label: 'Sync', desc: 'Download new and missing files from iCloud', selected: true },
+      { label: 'Browse Library', desc: 'View your backup organized by year and month' },
+      { label: 'Download by Date', desc: 'Pick specific months to re-sync from iCloud' },
+      { label: 'Disk Status', desc: 'Check backup drive space and storage estimates' },
+      { label: 'Settings', desc: 'Change Apple ID, download location, or drive' },
+      { label: 'Log Out', desc: 'Clear iCloud session and credentials' },
+      { label: 'Quit', desc: 'Exit the program' },
+    ];
+    let menu = `<span class="dim">  ────────────────────────────────────</span>
+  <span class="dim">Account:</span>  <span class="bold">user@icloud.com</span>
+  <span class="dim">Backup:</span>   <span class="bold">27016</span> of ~<span class="bold">51391</span> iCloud files (52%)
+<span class="yellow">           ~24375 files not backed up (~202 GB needed)</span>
+  <span class="dim">Disk:</span>     62.4 GB free of 915.8 GB
+<span class="dim">  ────────────────────────────────────</span>
+
+<span class="dim">  Use arrow keys ↑↓ to move, Enter to select, Esc to quit</span>
+
+`;
+    items.forEach(item => {
+      if (item.selected) {
+        menu += `<span class="menu-item selected"><span class="pointer">▸</span> <span class="bold">${item.label.padEnd(20)}</span> ${item.desc}</span>\n`;
+      } else {
+        menu += `<span class="menu-item">  ${item.label.padEnd(20)} <span class="dim">${item.desc}</span></span>\n`;
+      }
+    });
+    return menu;
+  },
+
+  // 5: Sync screen
+  () => `<span class="accent">  Sync iCloud Photos</span>
+  ────────────────────────────────────
+
+  <span class="dim">Where should files be saved?</span>
+  <span class="dim">Files will be organized as: &lt;directory&gt;/YYYY/MM/photo.jpg</span>
+
+<span class="menu-item selected"><span class="pointer">▸</span> /run/media/user/BACKUP/Photos    62G free  (current)</span>
+<span class="menu-item">  /run/media/user/BACKUP            62G free</span>
+<span class="menu-item">  /home/user                        450G free</span>
+
+  ────────────────────────────────────
+
+  Backed up:    <span class="bold">27016</span> of ~<span class="bold">51391</span> files (209.0 GB)
+  Missing:      ~<span class="bold">24375</span> files (~<span class="bold">202.3 GB</span>)
+  Disk free:    <span class="bold">62.4 GB</span>
+
+<span class="yellow">  ⚠ Not enough space for all missing files.
+    Need ~139.9 GB more. Will download as much as possible.</span>
+
+<span class="dim">  Choose sync mode:</span>
+
+  <span class="bold">1)</span> Quick — check recent files only (fast, ~1 min)
+  <span class="bold">2)</span> Full  — check entire library (slow, may take hours)
+
+  Mode [1]: <span class="bold">1</span>
+`,
+
+  // 6: Sync progress
+  () => {
+    const files = [
+      { status: 'ok', name: '2026/03/IMG_4401.PNG' },
+      { status: 'ok', name: '2026/03/IMG_4402.PNG' },
+      { status: 'new', name: '2026/03/IMG_4403.PNG' },
+      { status: 'ok', name: '2026/03/IMG_4404.HEIC' },
+      { status: 'new', name: '2026/03/IMG_4405.PNG' },
+    ];
+
+    let out = `<span class="dim">  Quick sync — checking recent files (depth: 500)</span>
+<span class="dim">  Press Ctrl+C to stop safely (progress is kept).</span>
+
+`;
+    files.forEach(f => {
+      if (f.status === 'new') {
+        out += `    <span class="green">+ ${f.name}</span>\n`;
+      } else {
+        out += `    <span class="dim">✓ ${f.name}</span>\n`;
+      }
+    });
+
+    out += `
+  <span class="accent">⠹</span>  checked <span class="bold">814</span>  new <span class="green">36</span>  skipped <span class="dim">778</span>  <span class="dim">[45s]</span>
+
+
+<span class="accent">  Sync complete</span>
+  ────────────────────────────────────
+  Checked:      <span class="bold">814</span> files
+  Downloaded:   <span class="bold">36</span> new files
+  Skipped:      <span class="dim">778 already backed up</span>
+  ────────────────────────────────────
+
+<span class="dim">  Press Enter to go back to menu...</span>`;
+
+    return out;
+  },
+];
+
+let currentScreen = 0;
+
+function render() {
+  output.innerHTML = screens[currentScreen]();
+
+  // Update progress bar
+  document.querySelectorAll('.progress-step').forEach(el => {
+    const step = parseInt(el.dataset.step);
+    el.className = 'progress-step';
+    if (step < currentScreen) el.classList.add('done');
+    else if (step === currentScreen) el.classList.add('current');
+  });
+
+  // Update buttons
+  $('btnPrev').disabled = currentScreen === 0;
+  $('btnNext').disabled = currentScreen === screens.length - 1;
+}
+
+$('btnNext').addEventListener('click', () => {
+  if (currentScreen < screens.length - 1) {
+    currentScreen++;
+    render();
+  }
+});
+
+$('btnPrev').addEventListener('click', () => {
+  if (currentScreen > 0) {
+    currentScreen--;
+    render();
+  }
+});
+
+$('btnRestart').addEventListener('click', () => {
+  currentScreen = 0;
+  render();
+});
+
+// Keyboard navigation
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'ArrowRight' || e.key === ' ') {
+    e.preventDefault();
+    $('btnNext').click();
+  } else if (e.key === 'ArrowLeft') {
+    e.preventDefault();
+    $('btnPrev').click();
+  }
+});
+
+render();
+</script>
+</body>
+</html>
