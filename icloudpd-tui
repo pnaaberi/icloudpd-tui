@@ -1285,35 +1285,38 @@ action_full_sync() {
         total_lines=$(wc -l < "$sync_log" 2>/dev/null) || total_lines=0
 
         if (( total_lines > last_line_count )); then
-            local new_lines
-            new_lines=$(sed -n "$(( last_line_count + 1 )),${total_lines}p" "$sync_log")
+            # Process new log lines in one fast awk pass instead of per-line bash loop
+            local batch_result
+            batch_result=$(sed -n "$(( last_line_count + 1 )),${total_lines}p" "$sync_log" \
+                | gawk -v tdir="$TARGET_DIR" '
+                /Downloaded/ {
+                    sub(".*" tdir "/", ""); gsub(/[[:space:]].*/, "")
+                    dl++; print "new|" $0
+                }
+                /already exists|deduplicated/ {
+                    sub(".*" tdir "/", ""); gsub(/[[:space:]].*/, "")
+                    sk++; print "ok|" $0
+                }
+                END { print "COUNTS|" dl+0 "|" sk+0 }
+            ')
             last_line_count=$total_lines
 
+            # Extract counts from last line
+            local counts_line
+            counts_line=$(echo "$batch_result" | tail -1)
             local dl_new skip_new
-            dl_new=$(echo "$new_lines" | grep -c "Downloaded" 2>/dev/null) || dl_new=0
-            skip_new=$(echo "$new_lines" | grep -c "already exists\|deduplicated" 2>/dev/null) || skip_new=0
+            dl_new=$(echo "$counts_line" | cut -d'|' -f2)
+            skip_new=$(echo "$counts_line" | cut -d'|' -f3)
             downloaded=$(( downloaded + dl_new ))
             skipped=$(( skipped + skip_new ))
             checked=$(( downloaded + skipped ))
 
-            # Extract recent filenames and their status
-            while IFS= read -r logline; do
-                local fname="" status=""
-                if [[ "$logline" == *"Downloaded"* ]]; then
-                    fname=$(echo "$logline" | grep -oP '(?<=Photos/)\S+' || true)
-                    status="new"
-                elif [[ "$logline" == *"already exists"* ]]; then
-                    fname=$(echo "$logline" | grep -oP '(?<=Photos/)\S+' || true)
-                    status="ok"
-                elif [[ "$logline" == *"deduplicated"* ]]; then
-                    fname=$(echo "$logline" | grep -oP '(?<=Photos/)\S+' || true)
-                    status="ok"
-                fi
-                if [[ -n "$fname" ]]; then
-                    # Shift array and add new entry
-                    recent_files=("${recent_files[@]:1}" "${status}|${fname}")
-                fi
-            done <<< "$new_lines"
+            # Get last 5 file entries (excluding the COUNTS line)
+            local -a batch_files
+            mapfile -t batch_files < <(echo "$batch_result" | grep -v "^COUNTS|" | tail -5)
+            for entry in "${batch_files[@]}"; do
+                [[ -n "$entry" ]] && recent_files=("${recent_files[@]:1}" "$entry")
+            done
         fi
 
         local now_ts elapsed_s elapsed_fmt
