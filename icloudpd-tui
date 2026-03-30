@@ -946,6 +946,7 @@ main_menu() {
         "  Download by Date     Pick specific months to re-sync from iCloud" \
         "  Disk Status          Check backup drive space and storage estimates" \
         "  Settings             Change Apple ID, download location, or drive" \
+        "  Log Out              Clear iCloud session and credentials" \
         "  Quit                 Exit the program" \
     | fzf --ansi --no-multi --no-sort --reverse \
         --color="$FZF_COLORS" \
@@ -960,6 +961,7 @@ main_menu() {
         *"Download by Date"*)  action_download_by_date ;;
         *"Disk Status"*)       action_disk_status ;;
         *"Settings"*)          run_setup; main_menu; return ;;
+        *"Log Out"*)           action_logout ;;
         *)                      info "Bye."; exit 0 ;;
     esac
 }
@@ -1498,6 +1500,43 @@ action_sync() {
     echo
     read -rp "  $(dim "Press Enter to go back to menu...") " _
     main_menu
+}
+
+action_logout() {
+    echo
+    accent "  Log Out"; echo
+    echo "  ────────────────────────────────────"
+    dim "  This will:"; echo
+    dim "  - Clear your iCloud session cookies"; echo
+    dim "  - Remove your saved config (Apple ID, paths)"; echo
+    dim "  - Remove scan cache"; echo
+    echo
+    dim "  Your downloaded photos will NOT be deleted."; echo
+    echo
+    read -rp "  Are you sure? [y/N] " confirm
+    case "$confirm" in
+        [yY]*)
+            # Clear icloudpd session cookies
+            local cookie_name
+            cookie_name=$(echo "$USERNAME" | tr -d '@.' )
+            rm -f "$HOME/.pyicloud/${cookie_name}" "$HOME/.pyicloud/${cookie_name}.session" 2>/dev/null
+            info "Cleared iCloud session"
+
+            # Clear config and cache
+            rm -f "$CONFIG_FILE" 2>/dev/null
+            rm -rf "$CACHE_DIR" 2>/dev/null
+            info "Cleared config and cache"
+
+            echo
+            info "Logged out. Run icloudpd-tui again to set up a new account."
+            exit 0
+            ;;
+        *)
+            info "Cancelled."
+            main_menu
+            return
+            ;;
+    esac
 }
 
 action_disk_status() {
