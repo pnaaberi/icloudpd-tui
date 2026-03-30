@@ -70,8 +70,11 @@ banner() {
     echo
 }
 
-# Restore terminal state on interrupt
+# Track background process so we can kill it on interrupt
+BG_PID=""
+
 cleanup() {
+    [[ -n "$BG_PID" ]] && kill "$BG_PID" 2>/dev/null && wait "$BG_PID" 2>/dev/null
     tput cnorm 2>/dev/null
     printf '\033[K'
     echo
@@ -586,7 +589,7 @@ cache_is_fresh() {
     [[ -f "$CACHE_FILE" ]] || return 1
     local now mtime age
     now=$(date +%s)
-    mtime=$(file_mtime "$CACHE_FILE")
+    mtime=$(file_mtime "$CACHE_FILE") || mtime=0
     age=$(( now - mtime ))
     (( age < CACHE_MAX_AGE ))
 }
@@ -712,6 +715,7 @@ scan_library() {
         --recent "$recent" \
         >> "$CACHE_FILE" 2>>"$log_file" &
     local pid=$!
+    BG_PID=$pid
 
     local count
     if count=$(spin_while "$pid" "$CACHE_FILE" "Checking for new files (last $recent)..." "$log_file" 120); then
@@ -729,7 +733,9 @@ load_or_scan() {
     ensure_cache
     if cache_is_fresh; then
         local age_hr
-        age_hr=$(( ($(date +%s) - $(file_mtime "$CACHE_FILE")) / 3600 ))
+        local cache_mtime
+        cache_mtime=$(file_mtime "$CACHE_FILE") || cache_mtime=$(date +%s)
+        age_hr=$(( ($(date +%s) - cache_mtime) / 3600 ))
         info "Using cached scan (${age_hr}h old). Select 'Rescan' to refresh."
     else
         if ! scan_library; then
@@ -1178,6 +1184,7 @@ download_selection() {
             --skip-created-after "$end_date" \
             "${type_flags[@]}" >> "$dl_log" 2>&1 &
         local dl_pid=$!
+        BG_PID=$dl_pid
 
         # Spinner while icloudpd enumerates the library (no Downloaded lines yet)
         local tty=/dev/tty
@@ -1221,7 +1228,7 @@ download_selection() {
                 total_lines=$(wc -l < "$dl_log")
                 if (( total_lines > last_line )); then
                     sed -n "$(( last_line + 1 )),${total_lines}p" "$dl_log" \
-                        | grep -v "Downloading [0-9]* original\|Looking up\|Processing user\|Authenticat" \
+                        | { grep -v "Downloading [0-9]* original\|Looking up\|Processing user\|Authenticat" || true; } \
                         | sed "s|${TARGET_DIR}/||g; s/^.*INFO */  /; s/^.*DEBUG */  /"
                     last_line=$total_lines
                 fi
@@ -1229,31 +1236,13 @@ download_selection() {
             done
         fi
 
-        wait "$dl_pid" 2>/dev/null || true
+        wait "$dl_pid" 2>/dev/null || true; BG_PID=""
         capture_library_total "$dl_log"
     done
 }
 
-run_with_retry() {
-    local max_retries=3
-    local retry_delay=60  # start at 60s, doubles each attempt (exponential backoff)
-    local attempt=0
-    while ! "$@"; do
-        attempt=$((attempt + 1))
-        if (( attempt >= max_retries )); then
-            err "Failed after $max_retries attempts."
-            err "If this keeps happening, Apple may be rate-limiting your account."
-            err "Wait 15-30 minutes before trying again."
-            return 1
-        fi
-        info "Interrupted, retrying in ${retry_delay}s... (attempt $attempt/$max_retries)"
-        dim "  If iCloud keeps rejecting requests, wait a while before retrying."; echo
-        sleep "$retry_delay"
-        retry_delay=$(( retry_delay * 2 ))  # exponential backoff
-    done
-}
-
 action_sync() {
+    local cli_depth="${1:-}"  # from CLI arg, e.g. icloudpd-tui 100
     local local_count
     local_count=$(find "$TARGET_DIR" -type f 2>/dev/null | wc -l)
     local library_total
@@ -1316,7 +1305,11 @@ action_sync() {
     fi
 
     local scan_depth
-    if [[ "$mode" == "full" ]]; then
+    if [[ -n "$cli_depth" ]]; then
+        # CLI arg overrides mode selection (backward compat: icloudpd-tui 100)
+        scan_depth=$cli_depth
+        dim "  Sync with scan depth $scan_depth (from command line)"; echo
+    elif [[ "$mode" == "full" ]]; then
         scan_depth="${library_total:-$local_count}"
         (( scan_depth < 1000 )) && scan_depth=1000
         dim "  Full sync — scanning entire library (depth: $scan_depth)"; echo
@@ -1340,6 +1333,7 @@ action_sync() {
         --size "$DL_SIZE" \
         --until-found "$scan_depth" >> "$sync_log" 2>&1 &
     local sync_pid=$!
+    BG_PID=$sync_pid
 
     local tty=/dev/tty
     local checked=0 downloaded=0 skipped=0
@@ -1383,7 +1377,7 @@ action_sync() {
             checked=$(( downloaded + skipped ))
 
             local -a batch_files
-            mapfile -t batch_files < <(echo "$batch_result" | grep -v "^COUNTS|" | tail -5)
+            mapfile -t batch_files < <({ echo "$batch_result" | grep -v "^COUNTS|" || true; } | tail -5)
             for entry in "${batch_files[@]}"; do
                 [[ -n "$entry" ]] && recent_files=("${recent_files[@]:1}" "$entry")
             done
@@ -1438,7 +1432,7 @@ action_sync() {
         checked=$(( downloaded + skipped ))
     fi
 
-    wait "$sync_pid" 2>/dev/null || true
+    wait "$sync_pid" 2>/dev/null || true; BG_PID=""
 
     printf '\033[%dA' "$display_rows" > "$tty"
     for ((r=0; r<display_rows; r++)); do printf '\033[K\n' > "$tty"; done
