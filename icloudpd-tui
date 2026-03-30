@@ -294,8 +294,10 @@ run_setup() {
     echo
 
     local default_user="$USERNAME"
+    dim "  Tip: you can paste your email with Cmd+V or Ctrl+Shift+V"; echo
+    echo
     while true; do
-        read -rp "  Apple ID${default_user:+ [$default_user]}: " input
+        read -erp "  Apple ID${default_user:+ [$default_user]}: " input
         input="${input:-$default_user}"
         if [[ "$input" == *@*.* ]]; then
             USERNAME="$input"
@@ -303,7 +305,7 @@ run_setup() {
         elif [[ -z "$input" ]]; then
             err "  Apple ID is required."
         else
-            err "  That doesn't look like an email address. Try again."
+            err "  That doesn't look like an email. You can copy-paste it instead."
         fi
     done
     echo
