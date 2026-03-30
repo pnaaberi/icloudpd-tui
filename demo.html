@@ -227,6 +227,7 @@
   <div class="progress-step" data-step="4"></div>
   <div class="progress-step" data-step="5"></div>
   <div class="progress-step" data-step="6"></div>
+  <div class="progress-step" data-step="7"></div>
 </div>
 
 <div class="controls">
@@ -364,32 +365,23 @@ const screens = [
   Mode [1]: <span class="bold">1</span>
 `,
 
-  // 6: Sync progress
-  () => {
-    const files = [
-      { status: 'ok', name: '2026/03/IMG_4401.PNG' },
-      { status: 'ok', name: '2026/03/IMG_4402.PNG' },
-      { status: 'new', name: '2026/03/IMG_4403.PNG' },
-      { status: 'ok', name: '2026/03/IMG_4404.HEIC' },
-      { status: 'new', name: '2026/03/IMG_4405.PNG' },
-    ];
-
-    let out = `<span class="dim">  Quick sync — checking recent files (depth: 500)</span>
+  // 6: Sync in progress (animated)
+  () => `<span class="dim">  Quick sync — checking recent files (depth: 500)</span>
 <span class="dim">  Press Ctrl+C to stop safely (progress is kept).</span>
 
-`;
-    files.forEach(f => {
-      if (f.status === 'new') {
-        out += `    <span class="green">+ ${f.name}</span>\n`;
-      } else {
-        out += `    <span class="dim">✓ ${f.name}</span>\n`;
-      }
-    });
 
-    out += `
-  <span class="accent">⠹</span>  checked <span class="bold">814</span>  new <span class="green">36</span>  skipped <span class="dim">778</span>  <span class="dim">[45s]</span>
+    <span class="dim">✓ 2026/03/IMG_4399.HEIC</span>
+    <span class="dim">✓ 2026/03/IMG_4400.MOV</span>
+    <span class="dim">✓ 2026/03/IMG_4401.PNG</span>
+    <span class="green">+ 2026/03/IMG_4402.JPG</span>
+    <span class="dim">✓ 2026/03/IMG_4403.HEIC</span>
 
+  <span class="accent" id="spinChar">⠹</span>  checked <span class="bold">814</span>  new <span class="green">36</span>  skipped <span class="dim">778</span>  <span class="dim">[45s]</span>
 
+`,
+
+  // 7: Sync complete
+  () => `
 <span class="accent">  Sync complete</span>
   ────────────────────────────────────
   Checked:      <span class="bold">814</span> files
@@ -397,16 +389,30 @@ const screens = [
   Skipped:      <span class="dim">778 already backed up</span>
   ────────────────────────────────────
 
-<span class="dim">  Press Enter to go back to menu...</span>`;
-
-    return out;
-  },
+<span class="dim">  Press Enter to go back to menu...</span>
+`,
 ];
 
 let currentScreen = 0;
 
+let spinInterval = null;
+
 function render() {
+  if (spinInterval) { clearInterval(spinInterval); spinInterval = null; }
   output.innerHTML = screens[currentScreen]();
+
+  // Animate spinner on the sync progress screen
+  if (currentScreen === 6) {
+    const frames = '⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏';
+    let fi = 0;
+    const el = document.getElementById('spinChar');
+    if (el) {
+      spinInterval = setInterval(() => {
+        fi = (fi + 1) % frames.length;
+        el.textContent = frames[fi];
+      }, 80);
+    }
+  }
 
   // Update progress bar
   document.querySelectorAll('.progress-step').forEach(el => {
