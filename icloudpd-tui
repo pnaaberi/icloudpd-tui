@@ -316,25 +316,41 @@ run_setup() {
     echo
 
     # ── Step 3: Drive check ───────────────────────────────────────────────────
-    accent "  Step 3 of 3 — Drive check (optional)"; echo
-    echo "  ────────────────────────────────────"
-    dim "  If your photos go on an external drive, we can check"; echo
-    dim "  it's plugged in before each download."; echo
-    dim "  Leave blank to skip this check."; echo
-    echo
-
+    # Auto-detect if TARGET_DIR is on an external/removable drive
     local default_mount="$MOUNT_POINT"
-    # Try to auto-detect: if TARGET_DIR is on a removable mount, suggest it
     if [[ -z "$default_mount" ]]; then
         local detected
         detected=$(df "$TARGET_DIR" 2>/dev/null | awk 'NR==2{print $6}')
-        if [[ "$detected" == /run/media/* || "$detected" == /mnt/* || "$detected" == /media/* ]]; then
+        if [[ "$detected" == /run/media/* || "$detected" == /mnt/* || "$detected" == /media/* || "$detected" == /Volumes/* ]]; then
             default_mount="$detected"
         fi
     fi
 
-    read -erp "  Mount point${default_mount:+ [$default_mount]}: " input
-    MOUNT_POINT="${input:-$default_mount}"
+    if [[ -n "$default_mount" ]]; then
+        accent "  Step 3 of 3 — Drive check"; echo
+        echo "  ────────────────────────────────────"
+        printf "  Detected external drive: %s\n" "$(bold "$default_mount")"
+        dim "  We'll check it's plugged in before each download."; echo
+        echo
+        read -rp "  Use this? [Y/n] " input
+        case "$input" in
+            [nN]*)
+                MOUNT_POINT=""
+                dim "  Skipped drive check."; echo
+                ;;
+            *)
+                MOUNT_POINT="$default_mount"
+                ;;
+        esac
+    else
+        accent "  Step 3 of 3 — Drive check (optional)"; echo
+        echo "  ────────────────────────────────────"
+        dim "  Your photos are on a local folder — no drive check needed."; echo
+        dim "  If you want to check an external drive anyway, enter its mount point."; echo
+        echo
+        read -erp "  Mount point (or Enter to skip): " input
+        MOUNT_POINT="${input:-}"
+    fi
 
     if [[ -n "$MOUNT_POINT" ]] && ! is_mountpoint "$MOUNT_POINT" 2>/dev/null; then
         dim "  Note: $MOUNT_POINT is not mounted right now. That's fine if"; echo
