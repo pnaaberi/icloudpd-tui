@@ -257,7 +257,7 @@ run_setup() {
     dim "  This takes about a minute. Your settings stay on this computer."; echo
     echo
     # Animate the steps roadmap — white sweep across, fades to dim, flash twice
-    local full_line="1) Apple ID  →  2) Download location  →  3) Drive check  →  Login test"
+    local full_line="1) Apple ID  →  2) Download location  →  3) Login test"
     local d=$'\033[38;2;100;130;115m' w=$'\033[1;37m' r=$'\033[0m'
     local len=${#full_line}
 
@@ -339,44 +339,29 @@ run_setup() {
 
     # ── Step 3: Drive check ───────────────────────────────────────────────────
     # Auto-detect if TARGET_DIR is on an external/removable drive
-    local default_mount="$MOUNT_POINT"
-    if [[ -z "$default_mount" ]]; then
-        local detected
-        detected=$(df "$TARGET_DIR" 2>/dev/null | awk 'NR==2{print $6}')
-        if [[ "$detected" == /run/media/* || "$detected" == /mnt/* || "$detected" == /media/* || "$detected" == /Volumes/* ]]; then
-            default_mount="$detected"
-        fi
+    local detected_drive=""
+    local df_mount
+    df_mount=$(df "$TARGET_DIR" 2>/dev/null | awk 'NR==2{print $6}')
+    if [[ "$df_mount" == /run/media/* || "$df_mount" == /mnt/* || "$df_mount" == /media/* || "$df_mount" == /Volumes/* ]]; then
+        detected_drive="$df_mount"
     fi
 
-    if [[ -n "$default_mount" ]]; then
-        accent "  Step 3 of 3 — Drive check"; echo
+    if [[ -n "$detected_drive" ]]; then
+        # External drive detected — confirm with user
+        accent "  Step 3 of 3 — External drive detected"; echo
         echo "  ────────────────────────────────────"
-        printf "  Detected external drive: %s\n" "$(bold "$default_mount")"
-        dim "  We'll check it's plugged in before each download."; echo
+        printf "  Your photos are saved on: %s\n" "$(bold "$detected_drive")"
+        dim "  We can check this drive is plugged in before each download,"; echo
+        dim "  so you don't get errors if it's disconnected."; echo
         echo
-        read -rp "  Use this? [Y/n] " input
+        read -rp "  Enable this check? [Y/n] " input
         case "$input" in
-            [nN]*)
-                MOUNT_POINT=""
-                dim "  Skipped drive check."; echo
-                ;;
-            *)
-                MOUNT_POINT="$default_mount"
-                ;;
+            [nN]*) MOUNT_POINT="" ;;
+            *)     MOUNT_POINT="$detected_drive" ;;
         esac
     else
-        accent "  Step 3 of 3 — Drive check (optional)"; echo
-        echo "  ────────────────────────────────────"
-        dim "  Your photos are on a local folder — no drive check needed."; echo
-        dim "  If you want to check an external drive anyway, enter its mount point."; echo
-        echo
-        read -erp "  Mount point (or Enter to skip): " input
-        MOUNT_POINT="${input:-}"
-    fi
-
-    if [[ -n "$MOUNT_POINT" ]] && ! is_mountpoint "$MOUNT_POINT" 2>/dev/null; then
-        dim "  Note: $MOUNT_POINT is not mounted right now. That's fine if"; echo
-        dim "  the drive is unplugged — we'll check before each download."; echo
+        # Local folder — skip silently
+        MOUNT_POINT=""
     fi
     echo
 
@@ -387,8 +372,6 @@ run_setup() {
     printf "  Directory:     %s\n" "$(bold "$TARGET_DIR")"
     if [[ -n "$MOUNT_POINT" ]]; then
         printf "  Drive check:   %s\n" "$(bold "$MOUNT_POINT")"
-    else
-        printf "  Drive check:   %s\n" "$(dim "none (local folder)")"
     fi
     echo "  ────────────────────────────────────"
     echo
