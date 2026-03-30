@@ -389,20 +389,41 @@ pick_directory() {
     local default_dir="$1"
     local user=${USER:-$(whoami)}
 
-    # Build list of candidate directories
+    # Build list of candidate directories from common locations
     local -a dirs=()
     [[ -d "$default_dir" ]] && dirs+=("$default_dir  (current)")
 
-    # External drives
-    if [[ -d "/run/media/$user" ]]; then
-        for d in /run/media/"$user"/*/; do
-            [[ -d "$d" ]] && dirs+=("${d%/}")
-        done
-    fi
-    # Common mount points
+    # External/removable drives — varies by distro
+    # Arch/Fedora: /run/media/$USER, Ubuntu/Debian: /media/$USER
+    for base in "/run/media/$user" "/media/$user"; do
+        if [[ -d "$base" ]]; then
+            for d in "$base"/*/; do
+                [[ -d "$d" ]] && dirs+=("${d%/}")
+            done
+        fi
+    done
+
+    # Manual mount points
     for d in /mnt/*/; do [[ -d "$d" ]] && dirs+=("${d%/}"); done
-    # Home
+
+    # Common home directories for photos
+    for d in "$HOME/Pictures" "$HOME/Photos" "$HOME/icloud-photos"; do
+        [[ -d "$d" ]] && dirs+=("$d")
+    done
+
+    # Home directory itself
     dirs+=("$HOME")
+
+    # Deduplicate — current dir might also be found in scanned paths
+    local -a unique_dirs=()
+    local -A seen=()
+    for d in "${dirs[@]}"; do
+        local clean="${d%  (current)}"
+        [[ -n "${seen[$clean]:-}" ]] && continue
+        seen["$clean"]=1
+        unique_dirs+=("$d")
+    done
+    dirs=("${unique_dirs[@]}")
 
     # Add free space info to each entry
     local -a display=()
