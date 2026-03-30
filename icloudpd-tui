@@ -230,7 +230,7 @@ save_config() {
     # Use printf %q to safely escape values for shell sourcing
     cat > "$CONFIG_FILE" <<EOF
 # icloudpd-tui configuration
-# Generated on $(date -I)
+# Generated on $(date +%Y-%m-%d)
 
 # Apple ID email address
 USERNAME=$(printf '%q' "$USERNAME")
@@ -752,12 +752,14 @@ scan_library() {
 
     local count
     if count=$(spin_while "$pid" "$CACHE_FILE" "Checking for new files (last $recent)..." "$log_file" 120); then
+        BG_PID=""
         if (( count > 0 )); then
             info "Found $count new files to download"
         else
             info "Everything is up to date"
         fi
     else
+        BG_PID=""
         return 1
     fi
 }
@@ -785,9 +787,6 @@ load_or_scan() {
 # TYPE: Y = year summary row, M = month detail row
 build_tree() {
     local tree_file="$CACHE_DIR/tree.txt"
-    local target_dir_escaped
-    target_dir_escaped=$(printf '%s' "$TARGET_DIR" | sed 's/[&/\]/\\&/g')
-
     {
         if [[ -d "$TARGET_DIR" ]]; then
             find "$TARGET_DIR" -type f 2>/dev/null | gawk -v prefix="$TARGET_DIR/" '{if (index($0,prefix)==1) print substr($0, length(prefix)+1); else print}'
