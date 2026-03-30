@@ -671,10 +671,11 @@ main_menu() {
 
     if [[ -d "$TARGET_DIR" ]]; then
         disk_info
-        local pct_num=${DISK_PCT%\%}
-        if (( pct_num >= 95 )); then
+        # Warn based on absolute free space, not percentage (60GB on a 1TB drive is fine)
+        local avail_gb=$(( DISK_AVAIL / 1073741824 ))
+        if (( avail_gb < 2 )); then
             status_lines+="  $(err "Disk:")     $(err "$(humanize "$DISK_AVAIL") free of $(humanize "$DISK_TOTAL") — almost full!")"$'\n'
-        elif (( pct_num >= 85 )); then
+        elif (( avail_gb < 10 )); then
             status_lines+="  $(dim "Disk:")     $(bold "$(humanize "$DISK_AVAIL")") free of $(humanize "$DISK_TOTAL")  $(dim "⚠ running low")"$'\n'
         else
             status_lines+="  $(dim "Disk:")     $(humanize "$DISK_AVAIL") free of $(humanize "$DISK_TOTAL")"$'\n'
@@ -860,6 +861,7 @@ confirm_download() {
     echo
     accent "  Download Summary"; echo
     echo "  ────────────────────────────────────"
+    printf "  Saving to:  %s\n" "$(dim "$TARGET_DIR")"
     printf "  Folders:    %s\n" "$(dim "${months[*]}")"
     printf "  Filter:     %s\n" "$(accent "$type_filter")"
     printf "  New files:  %s photos, %s videos\n" "$(bold "$dl_photos")" "$(bold "$dl_videos")"
@@ -1040,6 +1042,7 @@ run_with_retry() {
 action_quick_sync() {
     local until_found="${1:-50}"
     info "Starting quick sync..."
+    dim "  Saving to: $TARGET_DIR"; echo
     dim "  This downloads all new files until $until_found consecutive duplicates are found."; echo
     dim "  Note: files you deleted locally will be re-downloaded if they still exist in iCloud."; echo
     dim "  Press Ctrl+C to stop safely (already-saved files are kept)."; echo
@@ -1067,6 +1070,7 @@ action_disk_status() {
 
     # Visual usage bar
     local pct_num=${DISK_PCT%\%}
+    local avail_gb=$(( DISK_AVAIL / 1073741824 ))
     local bar_width=20
     local filled=$(( pct_num * bar_width / 100 ))
     local empty=$(( bar_width - filled ))
@@ -1075,18 +1079,18 @@ action_disk_status() {
     for ((b=0; b<empty; b++)); do bar+="░"; done
 
     local bar_color
-    if (( pct_num >= 95 )); then bar_color="31";   # red
-    elif (( pct_num >= 85 )); then bar_color="33";  # yellow
-    else bar_color="38;2;95;138;114";               # accent green
+    if (( avail_gb < 2 )); then bar_color="31";        # red
+    elif (( avail_gb < 10 )); then bar_color="33";      # yellow
+    else bar_color="38;2;95;138;114";                    # accent green
     fi
     printf "  Usage:       \033[${bar_color}m[%s]\033[0m %s\n" "$bar" "$DISK_PCT"
 
     printf "  Total:       %s\n" "$(bold "$(humanize "$DISK_TOTAL")")"
     printf "  Used:        %s\n" "$(humanize "$DISK_USED")"
 
-    if (( pct_num >= 95 )); then
+    if (( avail_gb < 2 )); then
         printf "  Available:   %s  \033[31malmost full!\033[0m\n" "$(bold "$(humanize "$DISK_AVAIL")")"
-    elif (( pct_num >= 85 )); then
+    elif (( avail_gb < 10 )); then
         printf "  Available:   %s  \033[33m⚠ running low\033[0m\n" "$(bold "$(humanize "$DISK_AVAIL")")"
     else
         printf "  Available:   %s\n" "$(bold "$(humanize "$DISK_AVAIL")")"
