@@ -726,7 +726,7 @@ main_menu() {
         "  Browse Library       View your backup by year and month" \
         "  Download by Date     Re-sync a specific time period from iCloud" \
         "  Rescan               Check last $SCAN_RECENT iCloud files for anything new" \
-        "  Full Rescan          Scan entire iCloud library (slow, may take 30+ min)" \
+        "  Full Sync            Download ALL missing files from iCloud (slow)" \
         "  Disk Status          Check backup drive space" \
         "  Settings             Change download location or account" \
         "  Quit                 Exit the program" \
@@ -1215,49 +1215,60 @@ action_rescan() {
 }
 
 action_full_rescan() {
+    local local_count
+    local_count=$(find "$TARGET_DIR" -type f 2>/dev/null | wc -l)
+    local library_total
+    library_total=$(get_library_total)
+
     echo
-    accent "  Full Library Rescan"; echo
+    accent "  Full Library Sync"; echo
     echo "  ────────────────────────────────────"
-    dim "  This scans your ENTIRE iCloud library to find all files"; echo
-    dim "  not yet downloaded. For large libraries (20,000+ files),"; echo
-    dim "  this can take 30 minutes or more."; echo
+    dim "  This downloads ALL missing files from your iCloud library."; echo
+    dim "  It works by scanning from newest to oldest until every file"; echo
+    dim "  has been checked. For large libraries this can take hours."; echo
+
+    if [[ -n "$library_total" && "$library_total" -gt 0 ]]; then
+        local missing=$(( library_total - local_count ))
+        echo
+        printf "  Backed up:    %s of ~%s files\n" "$(bold "$local_count")" "$(bold "$library_total")"
+        if (( missing > 0 )); then
+            printf "  Missing:      ~%s files\n" "$(bold "$missing")"
+        else
+            printf "  Missing:      %s\n" "$(accent "none — already fully synced")"
+        fi
+    fi
+
     echo
     dim "  Avoid running this repeatedly — Apple may rate-limit your"; echo
     dim "  account if you make too many requests in a short time."; echo
-    dim "  Press Ctrl+C to cancel if it takes too long."; echo
+    dim "  Press Ctrl+C to stop safely (progress is kept)."; echo
     echo
-    read -rp "  Start full scan? [y/N] " confirm
+    read -rp "  Start full sync? [y/N] " confirm
     case "$confirm" in
         [yY]*) ;;
         *) info "Cancelled."; main_menu; return ;;
     esac
 
-    rm -f "$CACHE_FILE"
-    ensure_cache
-    > "$CACHE_FILE"
-    local log_file="$CACHE_DIR/scan.log"
-    > "$log_file"
-
     echo
-    $ICLOUDPD \
-        --only-print-filenames \
-        --log-level info \
+    # Use --until-found with the library size to ensure full coverage.
+    # This scans from newest to oldest, downloading missing files,
+    # and stops only after N consecutive duplicates — effectively a full sync.
+    local scan_depth="${library_total:-$local_count}"
+    (( scan_depth < 1000 )) && scan_depth=1000
+
+    info "Syncing entire library (scan depth: $scan_depth)..."
+    dim "  Saving to: $TARGET_DIR"; echo
+    echo
+
+    local sync_log="$CACHE_DIR/sync.log"
+    run_with_retry $ICLOUDPD \
         --username "$USERNAME" \
         --directory "$TARGET_DIR" \
         --folder-structure "$FOLDER_STRUCTURE" \
         --size "$DL_SIZE" \
-        >> "$CACHE_FILE" 2>>"$log_file" &
-    local pid=$!
-
-    local count
-    # Long timeouts: 10 min stall, 60 min total
-    if count=$(spin_while "$pid" "$CACHE_FILE" "Full scan in progress..." "$log_file" 3600); then
-        if (( count > 0 )); then
-            info "Found $count files not yet downloaded"
-        else
-            info "Everything is fully synced"
-        fi
-    fi
+        --until-found "$scan_depth" 2>&1 | tee "$sync_log"
+    capture_library_total "$sync_log"
+    info "Full sync complete!"
 
     echo
     read -rp "  $(dim "Press Enter to go back to menu...") " _
