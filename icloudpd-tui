@@ -391,11 +391,13 @@ run_setup() {
     echo
     if "$ICLOUDPD" --auth-only --username "$USERNAME"; then
         echo
-        info "Setup complete! Run $(bold "icloudpd-tui") to start."
+        info "Setup complete!"
+        SETUP_AUTH_DONE=true
     else
         echo
         err "  Login failed — but your settings are saved."
         err "  You can fix this later by running: icloudpd-tui --setup"
+        SETUP_AUTH_DONE=false
     fi
     echo
 }
@@ -407,7 +409,7 @@ ensure_config() {
     if [[ -z "$USERNAME" || -z "$TARGET_DIR" ]]; then
         banner
         run_setup
-        exit 0  # setup already tested auth; restart to enter normal flow
+        # Don't exit — continue into the main menu
     fi
 
     if [[ ! -d "$TARGET_DIR" ]]; then
@@ -1657,7 +1659,8 @@ main() {
 
     check_deps
     ensure_config
-    banner
+    # Banner is shown by ensure_config on first run; skip if already shown
+    [[ "${SETUP_AUTH_DONE:-}" == "true" || "${SETUP_AUTH_DONE:-}" == "false" ]] || banner
     check_mount
 
     # Backward compatibility: numeric arg triggers quick sync and exits
@@ -1667,23 +1670,27 @@ main() {
         return
     fi
 
-    # Pre-flight iCloud authentication
-    info "Signing in to iCloud..."
-    dim "  If prompted, enter your Apple ID password and the verification code"; echo
-    dim "  sent to your trusted Apple devices."; echo
-    echo
-    if ! "$ICLOUDPD" --auth-only --username "$USERNAME"; then
+    # Skip auth if setup already did it
+    if [[ "${SETUP_AUTH_DONE:-}" == "true" ]]; then
+        SETUP_AUTH_DONE=""
+    else
+        info "Signing in to iCloud..."
+        dim "  If prompted, enter your Apple ID password and the verification code"; echo
+        dim "  sent to your trusted Apple devices."; echo
         echo
-        err "  Authentication failed."
-        dim "  This could be a wrong Apple ID, expired session, or network issue."; echo
+        if ! "$ICLOUDPD" --auth-only --username "$USERNAME"; then
+            echo
+            err "  Authentication failed."
+            dim "  This could be a wrong Apple ID, expired session, or network issue."; echo
+            echo
+            read -rp "  $(dim "Run setup to change account? [y/N]") " fix
+            case "$fix" in
+                [yY]*) run_setup; exit 0 ;;
+                *) exit 1 ;;
+            esac
+        fi
         echo
-        read -rp "  $(dim "Run setup to change account? [y/N]") " fix
-        case "$fix" in
-            [yY]*) run_setup; exit 0 ;;
-            *) exit 1 ;;
-        esac
     fi
-    echo
 
     main_menu
 }
