@@ -35,6 +35,7 @@ CONFIG_FILE="$CONFIG_DIR/config"
 CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/icloudpd-tui"
 CACHE_FILE="$CACHE_DIR/filelist.txt"
 CACHE_MAX_AGE=86400  # 24 hours
+LIBRARY_TOTAL_FILE="$CACHE_DIR/library_total.txt"  # cached iCloud library size
 
 # Size estimation defaults (KB) — recalibrated from local files if available
 AVG_PHOTO_KB=1843    # ~1.8 MB
@@ -385,6 +386,25 @@ last_day_of_month() {
 
 ensure_cache() { mkdir -p "$CACHE_DIR"; }
 
+# Save the iCloud library total when we see it in icloudpd output.
+# icloudpd prints "Downloading N original photos and videos" on every run.
+capture_library_total() {
+    local log_file=$1
+    local total
+    total=$(grep -oP 'Downloading \K[0-9]+(?= original)' "$log_file" 2>/dev/null | head -1)
+    if [[ -n "$total" && "$total" -gt 0 ]]; then
+        echo "$total" > "$LIBRARY_TOTAL_FILE"
+    fi
+}
+
+get_library_total() {
+    if [[ -f "$LIBRARY_TOTAL_FILE" ]]; then
+        cat "$LIBRARY_TOTAL_FILE"
+    else
+        echo ""
+    fi
+}
+
 cache_is_fresh() {
     [[ -f "$CACHE_FILE" ]] || return 1
     local now mtime age
@@ -659,14 +679,29 @@ main_menu() {
         pending_count=$(wc -l < "$CACHE_FILE")
     fi
 
+    local library_total
+    library_total=$(get_library_total)
+
     status_lines+="$(dim "  ────────────────────────────────────")"$'\n'
     status_lines+="  $(dim "Account:")  $(bold "$USERNAME")"$'\n'
-    status_lines+="  $(dim "Backup:")   $(bold "$local_count") files in $(dim "$TARGET_DIR")"$'\n'
+
+    if [[ -n "$library_total" && "$library_total" -gt 0 ]]; then
+        local pct=$(( local_count * 100 / library_total ))
+        local missing=$(( library_total - local_count ))
+        status_lines+="  $(dim "Backup:")   $(bold "$local_count") of ~$(bold "$library_total") iCloud files (${pct}%)"$'\n'
+        if (( missing > 1000 )); then
+            status_lines+="  $(dim "         ")  \033[33m⚠ ~${missing} files not yet backed up\033[0m"$'\n'
+            status_lines+="  $(dim "           Use 'Sync New Files' to catch up")"$'\n'
+        elif (( missing > 0 )); then
+            status_lines+="  $(dim "           ~${missing} files remaining")"$'\n'
+        fi
+    else
+        status_lines+="  $(dim "Backup:")   $(bold "$local_count") files in $(dim "$TARGET_DIR")"$'\n'
+        status_lines+="  $(dim "           Run a sync to detect your iCloud library size")"$'\n'
+    fi
 
     if (( pending_count > 0 )); then
         status_lines+="  $(dim "New:")      $(accent "$pending_count files") waiting to download"$'\n'
-    else
-        status_lines+="  $(dim "Status:")   $(accent "up to date")"$'\n'
     fi
 
     if [[ -d "$TARGET_DIR" ]]; then
@@ -1017,6 +1052,7 @@ download_selection() {
         fi
 
         wait "$dl_pid" 2>/dev/null || true
+        capture_library_total "$dl_log"
     done
 }
 
@@ -1041,18 +1077,46 @@ run_with_retry() {
 
 action_quick_sync() {
     local until_found="${1:-50}"
-    info "Starting quick sync..."
+
+    # If we know there's a large gap, suggest a higher --until-found
+    local library_total
+    library_total=$(get_library_total)
+    if [[ -n "$library_total" && "$library_total" -gt 0 ]]; then
+        local local_count
+        local_count=$(find "$TARGET_DIR" -type f 2>/dev/null | wc -l)
+        local missing=$(( library_total - local_count ))
+        if (( missing > 1000 && until_found < 100 )); then
+            echo
+            printf "  \033[33m⚠ Your backup is missing ~%d files from iCloud.\033[0m\n" "$missing"
+            dim "  The default sync stops after 50 consecutive duplicates, which may"; echo
+            dim "  not be enough to find all gaps. A higher value scans more thoroughly"; echo
+            dim "  but takes longer."; echo
+            echo
+            read -rp "  Use higher scan depth? [Y=use $missing / n=keep $until_found] " input
+            case "$input" in
+                [nN]*) ;;
+                *) until_found=$missing ;;
+            esac
+            echo
+        fi
+    fi
+
+    info "Starting quick sync (scan depth: $until_found)..."
     dim "  Saving to: $TARGET_DIR"; echo
     dim "  This downloads all new files until $until_found consecutive duplicates are found."; echo
     dim "  Note: files you deleted locally will be re-downloaded if they still exist in iCloud."; echo
     dim "  Press Ctrl+C to stop safely (already-saved files are kept)."; echo
     echo
+
+    # Tee output to a log so we can capture the library total
+    local sync_log="$CACHE_DIR/sync.log"
     run_with_retry $ICLOUDPD \
         --username "$USERNAME" \
         --directory "$TARGET_DIR" \
         --folder-structure "$FOLDER_STRUCTURE" \
         --size "$DL_SIZE" \
-        --until-found "$until_found"
+        --until-found "$until_found" 2>&1 | tee "$sync_log"
+    capture_library_total "$sync_log"
     info "Quick sync complete!"
     main_menu
 }
