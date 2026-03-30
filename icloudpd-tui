@@ -764,23 +764,6 @@ scan_library() {
     fi
 }
 
-load_or_scan() {
-    ensure_cache
-    if cache_is_fresh; then
-        local age_hr
-        local cache_mtime
-        cache_mtime=$(file_mtime "$CACHE_FILE") || cache_mtime=$(date +%s)
-        age_hr=$(( ($(date +%s) - cache_mtime) / 3600 ))
-        info "Using cached scan (${age_hr}h old). Select 'Rescan' to refresh."
-    else
-        if ! scan_library; then
-            echo
-            read -rp "  $(dim "Press Enter to go back to menu...") " _
-            main_menu
-            return
-        fi
-    fi
-}
 
 # Build a year/month tree from local files + pending (new) files from cache.
 # Output format: TYPE|YEAR|MONTH|PHOTOS|VIDEOS|PENDING_PHOTOS|PENDING_VIDEOS
@@ -927,7 +910,7 @@ main_menu() {
         # Warn based on absolute free space, not percentage (60GB on a 1TB drive is fine)
         local avail_gb=$(( DISK_AVAIL / 1073741824 ))
         if (( avail_gb < 2 )); then
-            status_lines+="  $(err "Disk:")     $(err "$(humanize "$DISK_AVAIL") free of $(humanize "$DISK_TOTAL") — almost full!")"$'\n'
+            status_lines+=$'  \033[31m'"Disk:     $(humanize "$DISK_AVAIL") free of $(humanize "$DISK_TOTAL") — almost full!"$'\033[0m\n'
         elif (( avail_gb < 10 )); then
             status_lines+="  $(dim "Disk:")     $(bold "$(humanize "$DISK_AVAIL")") free of $(humanize "$DISK_TOTAL")  $(dim "⚠ running low")"$'\n'
         else
@@ -1115,8 +1098,13 @@ confirm_download() {
     printf "  Saving to:  %s\n" "$(dim "$TARGET_DIR")"
     printf "  Folders:    %s\n" "$(dim "${months[*]}")"
     printf "  Filter:     %s\n" "$(accent "$type_filter")"
-    printf "  New files:  %s photos, %s videos\n" "$(bold "$dl_photos")" "$(bold "$dl_videos")"
-    printf "  Est. size:  ~%s\n" "$(bold "${est_mb} MB")"
+    if (( dl_photos > 0 || dl_videos > 0 )); then
+        printf "  New files:  %s photos, %s videos (from last scan)\n" "$(bold "$dl_photos")" "$(bold "$dl_videos")"
+        printf "  Est. size:  ~%s\n" "$(bold "${est_mb} MB")"
+    else
+        dim "  icloudpd will download any missing files for the selected months."; echo
+        dim "  File counts unknown — run Sync first for an estimate."; echo
+    fi
     printf "  Disk free:  %s\n" "$(bold "$(humanize "$DISK_AVAIL")")"
     echo "  ────────────────────────────────────"
 
@@ -1319,8 +1307,11 @@ action_sync() {
     echo "  ────────────────────────────────────"
 
     # Choose sync mode
-    local mode
-    if (( missing > 1000 )); then
+    local scan_depth
+    if [[ -n "$cli_depth" ]]; then
+        scan_depth=$cli_depth
+        dim "  Sync with scan depth $scan_depth (from command line)"; echo
+    elif (( missing > 1000 )); then
         echo
         dim "  Choose sync mode:"; echo
         echo
@@ -1329,24 +1320,22 @@ action_sync() {
         echo
         read -rp "  Mode [1]: " mode_input
         case "$mode_input" in
-            2) mode="full" ;;
-            *) mode="quick" ;;
+            2)
+                scan_depth="${library_total:-$local_count}"
+                (( scan_depth < 1000 )) && scan_depth=1000
+                dim "  Full sync — scanning entire library (depth: $scan_depth)"; echo
+                ;;
+            *)
+                scan_depth=500
+                dim "  Quick sync — checking recent files (depth: $scan_depth)"; echo
+                ;;
         esac
+    elif [[ -z "$library_total" ]] || ! [[ "$library_total" =~ ^[0-9]+$ ]]; then
+        # Unknown library size — use higher depth on first sync to discover more
+        scan_depth=1000
+        dim "  First sync — scanning last $scan_depth files to detect library size"; echo
     else
-        mode="quick"
-    fi
-
-    local scan_depth
-    if [[ -n "$cli_depth" ]]; then
-        # CLI arg overrides mode selection (backward compat: icloudpd-tui 100)
-        scan_depth=$cli_depth
-        dim "  Sync with scan depth $scan_depth (from command line)"; echo
-    elif [[ "$mode" == "full" ]]; then
-        scan_depth="${library_total:-$local_count}"
-        (( scan_depth < 1000 )) && scan_depth=1000
-        dim "  Full sync — scanning entire library (depth: $scan_depth)"; echo
-    else
-        scan_depth=50
+        scan_depth=500
         dim "  Quick sync — checking recent files (depth: $scan_depth)"; echo
     fi
 
@@ -1484,6 +1473,10 @@ action_sync() {
     printf "  Downloaded:   %s new files\n" "$(bold "$downloaded")"
     printf "  Skipped:      %s already backed up\n" "$(dim "$skipped")"
     echo "  ────────────────────────────────────"
+    if [[ "${CLI_MODE:-}" == "true" ]]; then
+        echo
+        exit 0
+    fi
     echo
     read -rp "  $(dim "Press Enter to go back to menu...") " _
     main_menu
@@ -1563,7 +1556,11 @@ action_disk_status() {
             printf "  $(accent "Enough space for pending downloads.")\n"
         fi
     else
-        printf "  Pending:     %s\n" "$(accent "none — everything is synced")"
+        if [[ -f "$CACHE_FILE" ]]; then
+            printf "  Pending:     %s\n" "$(accent "none — up to date (from last scan)")"
+        else
+            printf "  Pending:     %s\n" "$(dim "unknown — run Sync to check")"
+        fi
     fi
 
     echo "  ────────────────────────────────────"
@@ -1587,8 +1584,9 @@ main() {
     banner
     check_mount
 
-    # Backward compatibility: numeric arg triggers quick sync
+    # Backward compatibility: numeric arg triggers quick sync and exits
     if [[ "${1:-}" =~ ^[0-9]+$ ]]; then
+        CLI_MODE=true
         action_sync "$1"
         return
     fi
@@ -1599,8 +1597,15 @@ main() {
     dim "  sent to your trusted Apple devices."; echo
     echo
     if ! "$ICLOUDPD" --auth-only --username "$USERNAME"; then
-        err "  Authentication failed. Check your credentials and try again."
-        exit 1
+        echo
+        err "  Authentication failed."
+        dim "  This could be a wrong Apple ID, expired session, or network issue."; echo
+        echo
+        read -rp "  $(dim "Run setup to change account? [y/N]") " fix
+        case "$fix" in
+            [yY]*) run_setup; exit 0 ;;
+            *) exit 1 ;;
+        esac
     fi
     echo
 
