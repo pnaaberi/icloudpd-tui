@@ -377,6 +377,72 @@ calibrate_averages() {
     if (( vc > 20 )); then AVG_VIDEO_KB=$vavg; fi
 }
 
+# Interactive directory picker using fzf.
+# Shows the default path first, plus common locations (external drives, home).
+# User picks with Enter or presses Esc to cancel.
+# Usage: dir=$(pick_directory "/current/default") || return
+pick_directory() {
+    local default_dir="$1"
+    local user=${USER:-$(whoami)}
+
+    # Build list of candidate directories
+    local -a dirs=()
+    [[ -d "$default_dir" ]] && dirs+=("$default_dir  (current)")
+
+    # External drives
+    if [[ -d "/run/media/$user" ]]; then
+        for d in /run/media/"$user"/*/; do
+            [[ -d "$d" ]] && dirs+=("${d%/}")
+        done
+    fi
+    # Common mount points
+    for d in /mnt/*/; do [[ -d "$d" ]] && dirs+=("${d%/}"); done
+    # Home
+    dirs+=("$HOME")
+
+    # Add free space info to each entry
+    local -a display=()
+    for d in "${dirs[@]}"; do
+        local clean="${d%  (current)}"
+        local is_current=""
+        [[ "$d" == *"(current)"* ]] && is_current=" (current)"
+        if [[ -d "$clean" ]]; then
+            local free
+            free=$(df -h "$clean" 2>/dev/null | awk 'NR==2{print $4}') || free="?"
+            display+=("$(printf '%-50s %s free%s' "$clean" "$free" "$is_current")")
+        fi
+    done
+
+    local header
+    header=$(printf '  %s\n  %s' \
+        "$(accent "Where should files be saved?")" \
+        "$(dim "Select a directory, or Esc to keep current location")")
+
+    local choice
+    choice=$(printf '%s\n' "${display[@]}" | fzf --ansi --no-multi --no-sort --reverse \
+        --color="$FZF_COLORS" \
+        --prompt="  " --pointer="▸" \
+        --header="$header" \
+        --header-first \
+    || true)
+
+    if [[ -z "$choice" ]]; then
+        # Esc pressed — keep current
+        echo "$default_dir"
+        return 0
+    fi
+
+    # Extract path (everything before the free space info)
+    local selected
+    selected=$(echo "$choice" | awk '{print $1}')
+
+    if [[ -d "$selected" ]]; then
+        echo "$selected"
+    else
+        echo "$default_dir"
+    fi
+}
+
 # Get the last day of a given YYYY MM (handles leap years via date)
 # Estimate bytes needed for N missing files based on local backup average file size.
 # Returns bytes. Uses du -sb which is fast (cached by filesystem).
@@ -909,23 +975,12 @@ confirm_download() {
 
     disk_info
 
+    TARGET_DIR=$(pick_directory "$TARGET_DIR") || { main_menu; return; }
+
     echo
     accent "  Download Summary"; echo
     echo "  ────────────────────────────────────"
-    printf "  Saving to:  %s\n" "$(bold "$TARGET_DIR")"
-    read -rp "  $(dim "Change? Enter new path or press Enter to keep:") " new_dir
-    if [[ -n "$new_dir" ]]; then
-        new_dir="${new_dir/#\~/$HOME}"
-        if [[ ! -d "$new_dir" ]]; then
-            read -rp "  $(dim "Directory doesn't exist. Create it? [Y/n]") " create
-            case "$create" in
-                [nN]*) info "Cancelled."; main_menu; return ;;
-                *) mkdir -p "$new_dir" && info "Created $new_dir" ;;
-            esac
-        fi
-        TARGET_DIR="$new_dir"
-        info "Downloading to: $TARGET_DIR"
-    fi
+    printf "  Saving to:  %s\n" "$(dim "$TARGET_DIR")"
     printf "  Folders:    %s\n" "$(dim "${months[*]}")"
     printf "  Filter:     %s\n" "$(accent "$type_filter")"
     printf "  New files:  %s photos, %s videos\n" "$(bold "$dl_photos")" "$(bold "$dl_videos")"
@@ -1113,20 +1168,7 @@ action_sync() {
     echo
     accent "  Sync iCloud Photos"; echo
     echo "  ────────────────────────────────────"
-    printf "  Saving to: %s\n" "$(bold "$TARGET_DIR")"
-    read -rp "  $(dim "Change location? Enter new path or press Enter to keep:") " new_dir
-    if [[ -n "$new_dir" ]]; then
-        new_dir="${new_dir/#\~/$HOME}"
-        if [[ ! -d "$new_dir" ]]; then
-            read -rp "  $(dim "Directory doesn't exist. Create it? [Y/n]") " create
-            case "$create" in
-                [nN]*) info "Cancelled."; main_menu; return ;;
-                *) mkdir -p "$new_dir" && info "Created $new_dir" ;;
-            esac
-        fi
-        TARGET_DIR="$new_dir"
-        info "Downloading to: $TARGET_DIR"
-    fi
+    TARGET_DIR=$(pick_directory "$TARGET_DIR") || { main_menu; return; }
     echo
 
     local missing=0
