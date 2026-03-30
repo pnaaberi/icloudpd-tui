@@ -301,7 +301,10 @@ ensure_config() {
         run_setup
     fi
 
-    mkdir -p "$TARGET_DIR" 2>/dev/null || true
+    if [[ ! -d "$TARGET_DIR" ]]; then
+        mkdir -p "$TARGET_DIR" 2>/dev/null || true
+        info "Created download directory: $TARGET_DIR"
+    fi
 }
 
 # ── Utilities ─────────────────────────────────────────────────────────────────
@@ -414,8 +417,9 @@ pick_directory() {
     done
 
     local header
-    header=$(printf '  %s\n  %s' \
+    header=$(printf '  %s\n  %s\n  %s' \
         "$(accent "Where should files be saved?")" \
+        "$(dim "Files will be organized as: <directory>/YYYY/MM/photo.jpg")" \
         "$(dim "Select a directory, or Esc to keep current location")")
 
     local choice
