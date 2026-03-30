@@ -689,7 +689,7 @@ main_menu() {
         "  Browse & Download    View library by year/month and pick what to sync" \
         "  Quick Sync           Grab all new files quickly" \
         "  Disk Status          Check backup drive space" \
-        "  Rescan Library       Look for new files in iCloud" \
+        "  Rescan Library       Check last $SCAN_RECENT iCloud files for anything new" \
         "  Settings             Change download location or account" \
         "  Quit                 Exit the program" \
     | fzf --ansi --no-multi --no-sort --reverse \
@@ -722,9 +722,9 @@ action_browse() {
     [[ -f "$CACHE_FILE" ]] && total_pending=$(wc -l < "$CACHE_FILE")
 
     local header
-    header=$(printf '  %s  %s files backed up, %s new in iCloud\n  Disk: %s used / %s total (%s free)\n\n  %s\n  %s\n  %s\n  %s' \
+    header=$(printf '  %s  %s files backed up, %s new (from last %s checked)\n  Disk: %s used / %s total (%s free)\n\n  %s\n  %s\n  %s\n  %s' \
         "$(accent "$TARGET_DIR")" \
-        "$(bold "$total_local")" "$(bold "$total_pending")" \
+        "$(bold "$total_local")" "$(bold "$total_pending")" "$SCAN_RECENT" \
         "$(humanize "$DISK_USED")" "$(humanize "$DISK_TOTAL")" "$(humanize "$DISK_AVAIL")" \
         "$(dim "1. Use Tab to mark folders you want to download from iCloud")" \
         "$(dim "2. Press Enter to continue to download options")" \
@@ -1103,6 +1103,9 @@ action_disk_status() {
 
 action_rescan() {
     rm -f "$CACHE_FILE"
+    dim "  Checking the $SCAN_RECENT most recent files in your iCloud library."; echo
+    dim "  To check more, set SCAN_RECENT=2000 before running the script."; echo
+    echo
     scan_library || true
     echo
     read -rp "  $(dim "Press Enter to go back to menu...") " _
