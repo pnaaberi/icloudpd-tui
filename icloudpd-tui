@@ -297,7 +297,17 @@ run_setup() {
         case "$input" in
             [nN]*) err "  Can't continue without a download directory."; exit 1 ;;
             *)
-                mkdir -p "$TARGET_DIR"
+                if ! mkdir -p "$TARGET_DIR" 2>/dev/null; then
+                    err "  Could not create directory (permission denied?)."
+                    err "  Check the path and try again."
+                    echo
+                    read -rp "  Directory: " input
+                    TARGET_DIR="${input:-$TARGET_DIR}"
+                    TARGET_DIR="${TARGET_DIR/#\~/$HOME}"
+                    if [[ ! -d "$TARGET_DIR" ]]; then
+                        mkdir -p "$TARGET_DIR" || { err "  Still can't create it. Exiting."; exit 1; }
+                    fi
+                fi
                 info "Created $TARGET_DIR"
                 ;;
         esac
@@ -571,7 +581,14 @@ pick_directory() {
         read -rp "  Create it? [Y/n] " create < /dev/tty
         case "$create" in
             [nN]*) echo "$default_dir"; return 0 ;;
-            *) mkdir -p "$chosen" && info "Created $chosen" > /dev/tty ;;
+            *)
+                if ! mkdir -p "$chosen" 2>/dev/null; then
+                    err "  Could not create directory (permission denied?)." > /dev/tty
+                    echo "$default_dir"
+                    return 0
+                fi
+                info "Created $chosen" > /dev/tty
+                ;;
         esac
     fi
 
