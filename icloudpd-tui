@@ -741,9 +741,9 @@ main_menu() {
         *"Sync New Files"*)    action_quick_sync ;;
         *"Browse Library"*)    action_browse_library ;;
         *"Download by Date"*)  action_download_by_date ;;
-        *"Disk Status"*)       action_disk_status ;;
+        *"Full Sync"*)         action_full_sync ;;
         *"Rescan"*)            action_rescan ;;
-        *"Full Rescan"*)       action_full_rescan ;;
+        *"Disk Status"*)       action_disk_status ;;
         *"Settings"*)          run_setup; main_menu; return ;;
         *)                      info "Bye."; exit 0 ;;
     esac
@@ -1214,7 +1214,7 @@ action_rescan() {
     main_menu
 }
 
-action_full_rescan() {
+action_full_sync() {
     local local_count
     local_count=$(find "$TARGET_DIR" -type f 2>/dev/null | wc -l)
     local library_total
