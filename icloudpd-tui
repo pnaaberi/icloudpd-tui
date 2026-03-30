@@ -1235,6 +1235,7 @@ download_selection() {
 
         # Run icloudpd in background — it enumerates the full library silently
         # before downloading, so we show a spinner during that wait.
+        ensure_cache
         local dl_log="$CACHE_DIR/download.log"
         > "$dl_log"
         "$ICLOUDPD" \
@@ -1387,6 +1388,7 @@ action_sync() {
     echo
 
     # Run icloudpd in background with live status display
+    ensure_cache
     local sync_log="$CACHE_DIR/sync.log"
     > "$sync_log"
 
