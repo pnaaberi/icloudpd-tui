@@ -378,6 +378,23 @@ calibrate_averages() {
 }
 
 # Get the last day of a given YYYY MM (handles leap years via date)
+# Estimate bytes needed for N missing files based on local backup average file size.
+# Returns bytes. Uses du -sb which is fast (cached by filesystem).
+estimate_missing_bytes() {
+    local missing_count=$1
+    local local_count
+    local_count=$(find "$TARGET_DIR" -type f 2>/dev/null | wc -l)
+    if (( local_count < 100 )); then
+        # Not enough local data — use conservative 5 MB average
+        echo $(( missing_count * 5 * 1048576 ))
+        return
+    fi
+    local total_bytes
+    total_bytes=$(du -sb "$TARGET_DIR" 2>/dev/null | awk '{print $1}')
+    local avg_bytes=$(( total_bytes / local_count ))
+    echo $(( missing_count * avg_bytes ))
+}
+
 last_day_of_month() {
     date -d "$1-$2-01 +1 month -1 day" +%d
 }
@@ -689,9 +706,12 @@ main_menu() {
         local pct=$(( local_count * 100 / library_total ))
         local missing=$(( library_total - local_count ))
         status_lines+="  $(dim "Backup:")   $(bold "$local_count") of ~$(bold "$library_total") iCloud files (${pct}%)"$'\n'
-        if (( missing > 1000 )); then
-            status_lines+="  $(dim "         ")  \033[33m⚠ ~${missing} files not yet backed up\033[0m"$'\n'
-            status_lines+="  $(dim "           Use 'Sync New Files' to catch up")"$'\n'
+        if (( missing > 100 )); then
+            local est_bytes
+            est_bytes=$(estimate_missing_bytes "$missing")
+            local est_human
+            est_human=$(humanize "$est_bytes")
+            status_lines+="  $(dim "         ")  \033[33m⚠ ~${missing} files not backed up (~${est_human} needed)\033[0m"$'\n'
         elif (( missing > 0 )); then
             status_lines+="  $(dim "           ~${missing} files remaining")"$'\n'
         fi
@@ -1230,9 +1250,26 @@ action_full_sync() {
     if [[ -n "$library_total" && "$library_total" -gt 0 ]]; then
         local missing=$(( library_total - local_count ))
         echo
-        printf "  Backed up:    %s of ~%s files\n" "$(bold "$local_count")" "$(bold "$library_total")"
+        local local_bytes
+        local_bytes=$(du -sb "$TARGET_DIR" 2>/dev/null | awk '{print $1}') || local_bytes=0
+        printf "  Backed up:    %s of ~%s files (%s)\n" "$(bold "$local_count")" "$(bold "$library_total")" "$(humanize "$local_bytes")"
         if (( missing > 0 )); then
+            local est_bytes
+            est_bytes=$(estimate_missing_bytes "$missing")
             printf "  Missing:      ~%s files\n" "$(bold "$missing")"
+            printf "  Est. needed:  ~%s to complete full backup\n" "$(bold "$(humanize "$est_bytes")")"
+
+            disk_info
+            printf "  Disk free:    %s\n" "$(bold "$(humanize "$DISK_AVAIL")")"
+
+            if (( est_bytes > DISK_AVAIL )); then
+                local shortfall=$(( est_bytes - DISK_AVAIL ))
+                echo
+                printf "  \033[31m⚠ Not enough disk space for a full sync.\033[0m\n"
+                printf "  \033[31m  You need ~%s more free space.\033[0m\n" "$(humanize "$shortfall")"
+                dim "  You can still run it — it will download as much as it can."; echo
+                dim "  Or use 'Download by Date' to sync specific months."; echo
+            fi
         else
             printf "  Missing:      %s\n" "$(accent "none — already fully synced")"
         fi
