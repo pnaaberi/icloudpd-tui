@@ -853,6 +853,7 @@ confirm_download() {
 
     echo
     dim "  Downloading... press Ctrl+C to stop safely (already-saved files are kept)."; echo
+    dim "  Note: files you deleted locally will be re-downloaded if they still exist in iCloud."; echo
     echo
     download_selection "$type_filter" "${months[@]}"
     echo
@@ -1009,6 +1010,7 @@ action_quick_sync() {
     local until_found="${1:-50}"
     info "Starting quick sync..."
     dim "  This downloads all new files until $until_found consecutive duplicates are found."; echo
+    dim "  Note: files you deleted locally will be re-downloaded if they still exist in iCloud."; echo
     dim "  Press Ctrl+C to stop safely (already-saved files are kept)."; echo
     echo
     run_with_retry $ICLOUDPD \
