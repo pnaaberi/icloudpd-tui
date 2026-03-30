@@ -671,7 +671,14 @@ main_menu() {
 
     if [[ -d "$TARGET_DIR" ]]; then
         disk_info
-        status_lines+="  $(dim "Disk:")     $(humanize "$DISK_AVAIL") free of $(humanize "$DISK_TOTAL")"$'\n'
+        local pct_num=${DISK_PCT%\%}
+        if (( pct_num >= 95 )); then
+            status_lines+="  $(err "Disk:")     $(err "$(humanize "$DISK_AVAIL") free of $(humanize "$DISK_TOTAL") — almost full!")"$'\n'
+        elif (( pct_num >= 85 )); then
+            status_lines+="  $(dim "Disk:")     $(bold "$(humanize "$DISK_AVAIL")") free of $(humanize "$DISK_TOTAL")  $(dim "⚠ running low")"$'\n'
+        else
+            status_lines+="  $(dim "Disk:")     $(humanize "$DISK_AVAIL") free of $(humanize "$DISK_TOTAL")"$'\n'
+        fi
     fi
     status_lines+="$(dim "  ────────────────────────────────────")"$'\n'
     status_lines+=$'\n'
