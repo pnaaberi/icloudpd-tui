@@ -287,7 +287,8 @@ run_setup() {
     echo
 
     local default_dir="${TARGET_DIR:-$HOME/icloud-photos}"
-    read -rp "  Directory [$default_dir]: " input
+    dim "  Tab to autocomplete paths"; echo
+    read -erp "  Directory [$default_dir]: " input
     TARGET_DIR="${input:-$default_dir}"
     TARGET_DIR="${TARGET_DIR/#\~/$HOME}"  # expand ~
 
@@ -301,7 +302,7 @@ run_setup() {
                     err "  Could not create directory (permission denied?)."
                     err "  Check the path and try again."
                     echo
-                    read -rp "  Directory: " input
+                    read -erp "  Directory: " input
                     TARGET_DIR="${input:-$TARGET_DIR}"
                     TARGET_DIR="${TARGET_DIR/#\~/$HOME}"
                     if [[ ! -d "$TARGET_DIR" ]]; then
@@ -332,7 +333,7 @@ run_setup() {
         fi
     fi
 
-    read -rp "  Mount point${default_mount:+ [$default_mount]}: " input
+    read -erp "  Mount point${default_mount:+ [$default_mount]}: " input
     MOUNT_POINT="${input:-$default_mount}"
 
     if [[ -n "$MOUNT_POINT" ]] && ! is_mountpoint "$MOUNT_POINT" 2>/dev/null; then
