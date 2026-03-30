@@ -648,19 +648,46 @@ format_tree() {
 # ── TUI ───────────────────────────────────────────────────────────────────────
 
 main_menu() {
+    # Build status summary for the header
+    local status_lines=""
+    local local_count=0 pending_count=0
+
+    if [[ -d "$TARGET_DIR" ]]; then
+        local_count=$(find "$TARGET_DIR" -type f 2>/dev/null | wc -l)
+    fi
+    if [[ -f "$CACHE_FILE" ]]; then
+        pending_count=$(wc -l < "$CACHE_FILE")
+    fi
+
+    status_lines+="$(dim "  ────────────────────────────────────")"$'\n'
+    status_lines+="  $(dim "Account:")  $(bold "$USERNAME")"$'\n'
+    status_lines+="  $(dim "Backup:")   $(bold "$local_count") files in $(dim "$TARGET_DIR")"$'\n'
+
+    if (( pending_count > 0 )); then
+        status_lines+="  $(dim "New:")      $(accent "$pending_count files") waiting to download"$'\n'
+    else
+        status_lines+="  $(dim "Status:")   $(accent "up to date")"$'\n'
+    fi
+
+    if [[ -d "$TARGET_DIR" ]]; then
+        disk_info
+        status_lines+="  $(dim "Disk:")     $(humanize "$DISK_AVAIL") free of $(humanize "$DISK_TOTAL")"$'\n'
+    fi
+    status_lines+="$(dim "  ────────────────────────────────────")"$'\n'
+    status_lines+=$'\n'
+    status_lines+="$(dim "  Use arrow keys ↑↓ to move, Enter to select, Esc to quit")"
+
     local choice
     choice=$(printf '%s\n' \
-        "  Browse & Download    Scan library, pick folders, download" \
-        "  Quick Sync           Download new photos (fastest method)" \
-        "  Disk Status          Show disk space and library stats" \
-        "  Rescan Library       Check iCloud for new photos" \
+        "  Browse & Download    View library by year/month and pick what to sync" \
+        "  Quick Sync           Grab all new photos quickly" \
+        "  Disk Status          Check backup drive space" \
+        "  Rescan Library       Look for new photos in iCloud" \
         "  Quit                 Exit the program" \
     | fzf --ansi --no-multi --no-sort --reverse \
         --color="$FZF_COLORS" \
         --prompt="  " --pointer="▸" \
-        --header="$(printf '  %s\n  %s' \
-            "$(accent "What would you like to do?")" \
-            "$(dim "Use arrow keys ↑↓ to move, Enter to select, Esc to quit")")" \
+        --header="$status_lines" \
         --header-first \
     || echo "Quit")
 
