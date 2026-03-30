@@ -686,11 +686,12 @@ main_menu() {
 
     local choice
     choice=$(printf '%s\n' \
-        "  Browse & Download    View library by year/month and pick what to sync" \
-        "  Quick Sync           Grab all new files quickly" \
-        "  Disk Status          Check backup drive space" \
-        "  Quick Rescan         Check last $SCAN_RECENT iCloud files for anything new" \
+        "  Sync New Files       Download recent files not yet backed up" \
+        "  Browse Library       View your backup by year and month" \
+        "  Download by Date     Re-sync a specific time period from iCloud" \
+        "  Rescan               Check last $SCAN_RECENT iCloud files for anything new" \
         "  Full Rescan          Scan entire iCloud library (slow, may take 30+ min)" \
+        "  Disk Status          Check backup drive space" \
         "  Settings             Change download location or account" \
         "  Quit                 Exit the program" \
     | fzf --ansi --no-multi --no-sort --reverse \
@@ -701,34 +702,60 @@ main_menu() {
     || echo "Quit")
 
     case "$choice" in
-        *"Browse & Download"*) action_browse ;;
-        *"Quick Sync"*)        action_quick_sync ;;
+        *"Sync New Files"*)    action_quick_sync ;;
+        *"Browse Library"*)    action_browse_library ;;
+        *"Download by Date"*)  action_download_by_date ;;
         *"Disk Status"*)       action_disk_status ;;
-        *"Quick Rescan"*)      action_rescan ;;
+        *"Rescan"*)            action_rescan ;;
         *"Full Rescan"*)       action_full_rescan ;;
         *"Settings"*)          run_setup; main_menu; return ;;
         *)                      info "Bye."; exit 0 ;;
     esac
 }
 
-action_browse() {
-    load_or_scan
+# View-only: show library tree, no download
+action_browse_library() {
     calibrate_averages
-
     local tree_file
     tree_file=$(build_tree)
 
     disk_info
-    local total_local total_pending=0
+    local total_local
     total_local=$(find "$TARGET_DIR" -type f 2>/dev/null | wc -l)
-    [[ -f "$CACHE_FILE" ]] && total_pending=$(wc -l < "$CACHE_FILE")
 
     local header
-    header=$(printf '  %s  %s files backed up, %s new (from last %s checked)\n  Disk: %s used / %s total (%s free)\n\n  %s\n  %s\n  %s\n  %s' \
-        "$(accent "$TARGET_DIR")" \
-        "$(bold "$total_local")" "$(bold "$total_pending")" "$SCAN_RECENT" \
-        "$(humanize "$DISK_USED")" "$(humanize "$DISK_TOTAL")" "$(humanize "$DISK_AVAIL")" \
-        "$(dim "1. Use Tab to mark folders you want to download from iCloud")" \
+    header=$(printf '  %s\n  %s files backed up  |  Disk: %s free of %s\n\n  %s\n  %s' \
+        "$(accent "Your iCloud backup — what is already saved on this drive")" \
+        "$(bold "$total_local")" \
+        "$(humanize "$DISK_AVAIL")" "$(humanize "$DISK_TOTAL")" \
+        "$(dim "Scroll with arrow keys ↑↓  |  Esc = go back")" \
+        "$(dim "To download, use 'Download by Date' or 'Sync New Files' from the menu")")
+
+    # View-only: no --multi, just browsing
+    format_tree "$tree_file" | fzf --ansi --no-multi --no-sort --reverse \
+        --color="$FZF_COLORS" \
+        --prompt="  " --pointer="▸" \
+        --header="$header" \
+        --header-first \
+    || true
+
+    main_menu
+}
+
+# Select year/month folders and download them from iCloud
+action_download_by_date() {
+    calibrate_averages
+    local tree_file
+    tree_file=$(build_tree)
+
+    disk_info
+
+    local header
+    header=$(printf '  %s\n  %s\n  Disk: %s free of %s\n\n  %s\n  %s\n  %s\n  %s' \
+        "$(accent "Select time periods to re-sync from iCloud")" \
+        "$(dim "icloudpd will download any files missing from your backup for the selected months.")" \
+        "$(humanize "$DISK_AVAIL")" "$(humanize "$DISK_TOTAL")" \
+        "$(dim "1. Use Tab to mark folders you want to download")" \
         "$(dim "2. Press Enter to continue to download options")" \
         "$(dim "3. Selecting a year row selects all its months")" \
         "$(dim "Esc = go back    Ctrl-A = select all")")
