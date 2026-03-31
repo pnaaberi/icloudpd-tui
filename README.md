@@ -86,6 +86,8 @@ chmod +x icloudpd-tui
 ./icloudpd-tui
 ```
 
+**Note:** macOS support is not fully tested yet. Sync may not work correctly. We recommend using Linux for now.
+
 Requires bash 4+ (macOS ships 3.2). The script auto-detects and uses brew's bash.
 
 </details>
